@@ -484,7 +484,7 @@ void sendCAN_Tx(MotorParams_t* MP, MotorState_t* MS){
 		case 0x6003: //to do
 			/* initialize transmit message */
 			if(Ext_ID_Rx.operation==1){
-			tx_data_length=sprintf(tx_data, "EBiCS_for_M510_BL3_V0.006");
+			tx_data_length=sprintf(tx_data, "EBiCS_for_M510+M560_V0.009");
 			send_multiframe(Ext_ID_Rx.command, &tx_data[0],tx_data_length );
 			}
 			break;
