@@ -25,7 +25,7 @@
 #define CAL_BAT_I_OFFSET 1360
 #define CAL_V 15LL<<8
 #define CAL_I 70 //Zurückgerechnet aus Batteriestrom = Tastverhältnis * Motorstrom
-#define BOOTLOADER 38
+#define BOOTLOADER 3
 // BionX IGH3
 //#define INDUCTANCE 12LL
 //#define RESISTANCE 220LL

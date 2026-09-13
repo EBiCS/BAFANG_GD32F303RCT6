@@ -1191,12 +1191,14 @@ void PAS_processing(void)
 
 void Speed_processing(void)
 {
+	if(Speed_counter>(300/MP.pulses_per_revolution)){ //debouncing, max speed that can be detected about 100kph
 		Speedx100_cumulated-=Speedx100_cumulated/MP.pulses_per_revolution;
 		Speedx100_cumulated+=MP.wheel_cirumference*4*360/(MP.pulses_per_revolution*Speed_counter);// 4000 Hz Timer interrupt frequency
 		MS.Speedx100=Speedx100_cumulated/MP.pulses_per_revolution;
 		Speed_counter=0;
 		Speed_flag=0;
 		MS.distance_since_startup+=MP.wheel_cirumference/(MP.pulses_per_revolution*1000); //in m
+	}
 }
 
 void reg_ADC_processing(void)
