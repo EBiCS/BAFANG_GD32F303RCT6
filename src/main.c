@@ -41,13 +41,13 @@ uint16_t adc_value[9];
 #define FMC_PAGE_SIZE           ((uint16_t)0x800U)
 #define FMC_WRITE_START_ADDR    ((uint32_t)0x0803F000U) //Page 126, Page size 2kB
 #define FMC_WRITE_END_ADDR      ((uint32_t)0x0803F800U) //just one page
-//#define FMC_OFFSET_PARA0      	((uint32_t)28) //starts after hall angles
-//#define FMC_OFFSET_PARA1      	FMC_OFFSET_PARA0 + ((uint32_t)64) //starts after Para1
-//#define FMC_OFFSET_PARA2      	FMC_OFFSET_PARA1 + ((uint32_t)64) //starts after Para1
 #define FMC_OFFSET_MP			((uint32_t)28) //starts after hall angles
+#define SOC_WRITE_START_ADDR    ((uint32_t)0x0803E800U) //Page 125, Page size 2kB for storing the used watthours
+#define SOC_WRITE_END_ADDR      ((uint32_t)0x0803F000U) //just one page
+
 uint32_t *ptrd;
 uint32_t address = 0x00000000U;
-uint32_t data0   = 0x01234567U;
+
 /* calculate the number of page to be programmed/erased */
 uint32_t PageNum = (FMC_WRITE_END_ADDR - FMC_WRITE_START_ADDR) / FMC_PAGE_SIZE;
 /* calculate the number of words to be programmed/erased */
@@ -193,7 +193,7 @@ int32_t battery_current_cumulated=0;
 uint32_t Speedx100_cumulated=0;
 uint32_t torque_cumulated=0;
 uint8_t array_temp[88];
-
+float watt_seconds_used=0;
 uint8_t level_to_array_element[10]={0,0,1,0,2,0,3,0,4,5}; //map assist Level to array element
 uint16_t Poll_commands[3]={0x3201,0x3200,0x3205};
 uint8_t pollnumber=0;
@@ -372,7 +372,7 @@ int main(void)
 
     while (1){
     	fwdgt_counter_reload();
-    	temp1++;
+
 #if (DISPLAY_TYPE == DISPLAY_TYPE_BAFANG)
     	if(receive_flag){
     		receive_flag = RESET;
@@ -433,7 +433,7 @@ int main(void)
 
     	}
 
-            if (slow_loop_counter > 200){ //slow loop every 500ms, Timer1 @4kHz interrupt frequency
+            if (slow_loop_counter > 200){ //slow loop every 50ms, 20Hz, Timer1 @4kHz interrupt frequency
             	gd_eval_led_toggle(LED2);
             	//if(PAS_counter>16000&&!ui_8_PWM_ON_Flag&&iabs(MS.torque_on_crank-740)>40)get_torque_correction();
 #ifdef PRINTDEBUG_UART
@@ -445,18 +445,14 @@ int main(void)
 #ifdef PRINTDEBUG_CAN
             	print_debug_on_CAN();
 #endif
-//            	if((Overrun_strength-mapped_torque)>>3>0){
-//            		Overrun_strength-=(Overrun_strength-mapped_torque)>>3;
-//            	}
-            	temp2=temp1;
-            	temp1=0;
+
+            	watt_seconds_used+=MS.Battery_Current*MS.Voltage*0.00000005; //*1/(1000*1000*20) for mA to A, mV to V, 20Hz
             	if(pollnumber>2)pollnumber=0;
             	sendCAN_Poll(&MP,&MS,Poll_commands[pollnumber]);
             	pollnumber++;
             	MS.int_Temperature = T_NTC(adc_value[6]);
             	MS.SOC = calculate_SOC(MS.Voltage, (uint8_t) ((float)MP.system_voltage/3.6));
-            	//toggle speed pin
-            	//gpio_bit_write(GPIOB, GPIO_PIN_0,(bit_status)(1-gpio_input_bit_get(GPIOB, GPIO_PIN_0)));
+
             	if(Speed_counter>20000) MS.Speedx100=0;
 				slow_loop_counter = 0;
 #if (BOOTLOADER!= 0)
@@ -1211,7 +1207,7 @@ void reg_ADC_processing(void)
 	voltage_raw_filtered=voltage_raw_cumulated>>6;
 
 	MS.Voltage=voltage_raw_filtered*CAL_BAT_V;//Battery voltage in mV
-	MS.calories=MS.torque_on_crank;
+	MS.calories=(uint16_t)watt_seconds_used/3600; //Ws to Wh
 
 	MS.torque_on_crank=(((adc_value[2])*3300)>>12)+torque_offset_correction; //map ADC value to mV
 	if(MS.torque_on_crank>tq_threshold&&PAS_counter<MP.PAS_timeout)torque_counter=0;//reset counter, if pressure on pedal and pedals rotating
