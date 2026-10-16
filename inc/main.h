@@ -149,6 +149,8 @@ typedef struct
 	uint8_t 		ext_boost_duration[6];
 	uint8_t 		ext_boost_strength[6];
 	uint16_t 		battery_capacity;
+	uint16_t       	walk_assist_speed; // in km/h x100, e.g. 600 = 6.0 km/h
+	uint8_t        	walk_assist_current; // 0-100 %, maps to Para1[36] (speed_limit_enabled in JS)
 
 }MotorParams_t;
 

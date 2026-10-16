@@ -1780,7 +1780,9 @@ uint16_t update_setpoint(void){
 	            //check brake with first priority
 	            if(MS.brake_active_flag)MS.i_q_setpoint_temp=0;
 	            // check push assist active
-	            else if(MS.pushassist_flag)MS.i_q_setpoint_temp=100;
+	            else if(MS.pushassist_flag){
+	            	MS.i_q_setpoint_temp=map(MS.Speedx100, (int32_t)MP.walk_assist_speed-200, MP.walk_assist_speed, MP.phase_current_max*MP.walk_assist_current/100, 0);
+	            }
 	            //calculate setpoint, if brake is not activated
 	            else{
 					mapped_throttle= map_exp(adc_value[1], MP.throttle_offset, MP.throttle_max, 0, phase_current_max_scaled);
