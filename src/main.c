@@ -475,7 +475,7 @@ int main(void)
             if(MS.i_q_setpoint){
             	if(!ui_8_PWM_ON_Flag){
             		if(MP.Kv_constant){ //avoid division by zero, if Kv is not detected yet.
-            			PI_iq.integral_part=(ui16_erps<<10)/MP.Kv_constant; //preload integral part if motor is running
+            			PI_iq.integral_part=((MP.reverse*(ui16_erps<<10)*_T)/(MP.Kv_constant*MS.Voltage))<<PI_iq.shift; //preload integral part if motor is running
                 		PI_iq.out=PI_iq.integral_part;
             		}
 
@@ -494,6 +494,7 @@ int main(void)
 					i8_recent_rotor_direction=0;
 
             	}
+            	if(ui16_erps)ui16_erps=0;
             }//end half rotation counter
 
 
@@ -1155,8 +1156,8 @@ void EXTI10_15_IRQHandler(void)
 {
     if(RESET != exti_interrupt_flag_get(EXTI_11)) {
 		if(MS.hall_angle_detect_flag>1){ //detect quadrature PAS setup during autodetect.
-			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10))MP.PAS_direction=1;
-			else MP.PAS_direction=0;
+			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10))MP.PAS_direction=0;
+			else MP.PAS_direction=1;
 		}
     	PAS_flag = 1;
         exti_interrupt_flag_clear(EXTI_11);
@@ -1179,6 +1180,7 @@ void PAS_processing(void)
 		uint16_cadence_filtered+=MS.cadence;
 
 		PAS_flag = 0;
+		//MP.PAS_direction=1;
 		if(MP.PAS_direction){
 			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10)){
 				if(Backwards_counter)Backwards_counter--;
@@ -1233,6 +1235,11 @@ void reg_ADC_processing(void)
 
 	MS.Voltage=voltage_raw_filtered*CAL_BAT_V;//Battery voltage in mV
 	MS.calories=(uint16_t)watt_seconds_used/3600; //Ws to Wh
+
+	temp1=MP.Kv_constant;
+	temp2=ui16_erps;
+	temp3=MP.PAS_direction;
+	temp4=MS.i_q_setpoint;
 
 	MS.torque_on_crank=(((adc_value[2])*3300)>>12)+torque_offset_correction; //map ADC value to mV
 	if(MS.torque_on_crank>tq_threshold&&PAS_counter<MP.PAS_timeout)torque_counter=0;//reset counter, if pressure on pedal and pedals rotating
@@ -1578,14 +1585,14 @@ void print_debug_on_CAN(void){
 	transmit_message.tx_ft = CAN_FT_DATA;
 	transmit_message.tx_ff = CAN_FF_EXTENDED;
 	transmit_message.tx_dlen = 8;
-	transmit_message.tx_data[0] = (MS.cadence>>8)&0xFF;//(GPIO_ISTAT(GPIOC)>>6)&0x07;
-	transmit_message.tx_data[1] = (MS.cadence)&0xFF; //ui16_timertics>>8;//(GPIO_ISTAT(GPIOA)>>8)&0xFF;
-	transmit_message.tx_data[2] = (MS.torque_on_crank>>8)&0xFF;;
-	transmit_message.tx_data[3] = (MS.torque_on_crank)&0xFF;
-	transmit_message.tx_data[4] = (iabs(MS.i_q_setpoint)>>8)&0xFF;//
-	transmit_message.tx_data[5] = (iabs(MS.i_q_setpoint))&0xFF;
-	transmit_message.tx_data[6] = (iabs(MS.i_q)>>8)&0xFF;
-	transmit_message.tx_data[7] = (iabs(MS.i_q))&0xFF;
+	transmit_message.tx_data[0] = (temp1>>8)&0xFF;//(GPIO_ISTAT(GPIOC)>>6)&0x07;
+	transmit_message.tx_data[1] = (temp1)&0xFF; //ui16_timertics>>8;//(GPIO_ISTAT(GPIOA)>>8)&0xFF;
+	transmit_message.tx_data[2] = (temp2>>8)&0xFF;;
+	transmit_message.tx_data[3] = (temp2)&0xFF;
+	transmit_message.tx_data[4] = (temp3>>8)&0xFF;//
+	transmit_message.tx_data[5] = (temp3)&0xFF;
+	transmit_message.tx_data[6] = (temp4>>8)&0xFF;
+	transmit_message.tx_data[7] = (temp4)&0xFF;
 
 	/* transmit message */
 	transmit_mailbox = can_message_transmit(CAN0, &transmit_message);
@@ -1872,7 +1879,9 @@ uint16_t update_setpoint(void){
 					temp6+=MS.u_d;
 					if(MS.u_q){
 						temp5-=temp5>>4;
-						temp5+=(ui16_erps<<10)/MS.u_q; //speed per voltage
+						temp5+=((ui16_erps<<10)*_T)/(iabs(MS.u_q)*MS.Voltage); //speed per voltage
+						temp3=ui16_erps;
+						temp4=iabs(MS.u_q);
 					}
 					if (p>30){
 						p=0;
@@ -1885,6 +1894,7 @@ uint16_t update_setpoint(void){
 							timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_2,_T>>1);
 							timer_primary_output_config(TIMER0,DISABLE); //Disable PWM if motor is not turning
 							MP.Kv_constant=temp5>>4;
+
 							write_virtual_eeprom();
 							MS.hall_angle_detect_flag=1;
 						}
