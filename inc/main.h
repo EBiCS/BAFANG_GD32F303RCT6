@@ -113,6 +113,7 @@ typedef struct
 	FlagStatus 		button_up_flag;
 	FlagStatus 		button_down_flag;
 	FlagStatus 		brake_active_flag;
+	FlagStatus 		PAS_active_flag;
 
 }MotorState_t;
 
