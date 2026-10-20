@@ -1181,7 +1181,7 @@ void PAS_processing(void)
 		uint16_cadence_filtered+=MS.cadence;
 
 		PAS_flag = 0;
-		//MP.PAS_direction=1;
+		MP.PAS_direction=1;
 		if(MP.PAS_direction){
 			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10)){
 				if(Backwards_counter)Backwards_counter--;
