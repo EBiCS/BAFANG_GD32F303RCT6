@@ -63,6 +63,7 @@ FlagStatus OnOffButton_flag=0;
 FlagStatus BC_limit_flag=0;
 FlagStatus recalibration_flag=0;
 uint8_t Backwards_counter=0;
+uint8_t Forward_counter=0;
 uint8_t corrections=0;
 
 void nvic_config(void);
@@ -1184,19 +1185,21 @@ void PAS_processing(void)
 		if(MP.PAS_direction){
 			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10)){
 				if(Backwards_counter)Backwards_counter--;
-
+				if(Forward_counter<10)Forward_counter++;
 			}
 			else{
 				if(Backwards_counter<10)Backwards_counter++;
+				Forward_counter=0;
 			}
 		}
 		else{
 			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10)){
 				if(Backwards_counter<10)Backwards_counter++;
-
+				Forward_counter=0;
 			}
 			else{
 				if(Backwards_counter)Backwards_counter--;
+				if(Forward_counter<10)Forward_counter++;
 			}
 		}
 
@@ -1303,12 +1306,12 @@ void runPIcontrol(void){
 	if(MS.Battery_Current>MP.battery_current_max) BC_limit_flag=1;
 	//check, if theoretical Battery current would be below limit with some hysteresis
 	if((MS.i_q_setpoint*CAL_I*MS.u_abs)>>11<(MP.battery_current_max*0.9)) BC_limit_flag=0; //duty cycle is scaled to 2048 = 2^11
-	if(PAS_counter<MP.PAS_timeout)MS.PAS_active_flag=1;
+	if(PAS_counter<MP.PAS_timeout&&Forward_counter>5)MS.PAS_active_flag=1;
 	else MS.PAS_active_flag=0;
 	if(!BC_limit_flag){
 	//control iq
 	  PI_iq.recent_value = MS.i_q;
-	  PI_iq.setpoint = MP.reverse*i8_reverse_flag*MS.i_q_setpoint+MS.PAS_active_flag*50;
+	  PI_iq.setpoint = MP.reverse*i8_reverse_flag*(MS.i_q_setpoint+MS.PAS_active_flag*25);
 
 	}
 	else{
