@@ -1237,7 +1237,7 @@ void reg_ADC_processing(void)
 	voltage_raw_filtered=voltage_raw_cumulated>>6;
 
 	MS.Voltage=voltage_raw_filtered*CAL_BAT_V;//Battery voltage in mV
-	MS.calories=(uint16_t)watt_seconds_used/3600; //Ws to Wh
+	MS.calories=MS.PAS_active_flag;//(uint16_t)watt_seconds_used/3600; //Ws to Wh
 
 	temp1=MP.Kv_constant;
 	temp2=ui16_erps;
