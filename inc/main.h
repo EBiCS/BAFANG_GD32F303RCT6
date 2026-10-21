@@ -154,7 +154,7 @@ typedef struct
 	uint16_t 		distance_gone;
 	uint16_t       	walk_assist_speed; // in km/h x100, e.g. 600 = 6.0 km/h
 	uint8_t        	walk_assist_current; // 0-100 %, maps to Para1[36] (speed_limit_enabled in JS)
-	int8_t       	PAS_direction; //use field Coaster Brake Support
+	int16_t       	PAS_direction;
 	uint16_t 		Kv_constant;
 
 }MotorParams_t;

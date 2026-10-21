@@ -1157,8 +1157,8 @@ void EXTI10_15_IRQHandler(void)
 {
     if(RESET != exti_interrupt_flag_get(EXTI_11)) {
 		if(MS.hall_angle_detect_flag>1){ //detect quadrature PAS setup during autodetect.
-			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10))MP.PAS_direction=0;
-			else MP.PAS_direction=1;
+			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10))MP.PAS_direction++;
+			else MP.PAS_direction--;
 		}
     	PAS_flag = 1;
         exti_interrupt_flag_clear(EXTI_11);
@@ -1181,7 +1181,7 @@ void PAS_processing(void)
 		uint16_cadence_filtered+=MS.cadence;
 
 		PAS_flag = 0;
-		MP.PAS_direction=1;
+		//MP.PAS_direction=1;
 		if(MP.PAS_direction){
 			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10)){
 				if(Backwards_counter)Backwards_counter--;
@@ -1237,7 +1237,7 @@ void reg_ADC_processing(void)
 	voltage_raw_filtered=voltage_raw_cumulated>>6;
 
 	MS.Voltage=voltage_raw_filtered*CAL_BAT_V;//Battery voltage in mV
-	MS.calories=MS.PAS_active_flag;//(uint16_t)watt_seconds_used/3600; //Ws to Wh
+	MS.calories=Forward_counter;//(uint16_t)watt_seconds_used/3600; //Ws to Wh
 
 	temp1=MP.Kv_constant;
 	temp2=ui16_erps;
@@ -1246,7 +1246,7 @@ void reg_ADC_processing(void)
 
 	MS.torque_on_crank=(((adc_value[2])*3300)>>12)+torque_offset_correction; //map ADC value to mV
 	if(MS.torque_on_crank>tq_threshold&&PAS_counter<MP.PAS_timeout)torque_counter=0;//reset counter, if pressure on pedal and pedals rotating
-	MS.range=corrections*100; //number of torquesensor calibrations at runtime
+	MS.range=MP.PAS_direction*100; //number of torquesensor calibrations at runtime
     slow_loop_counter ++;
     if(torque_counter<64000)torque_counter++;
     if(PAS_counter<64000)PAS_counter++;
@@ -1416,6 +1416,7 @@ void autodetect(void) {
     MS.i_d_setpoint= 0;
     temp5=0;//reset Temp5 for Kv detection in second part of calibration
     temp6=0;//reset Temp6 for second part of calibration
+    MP.PAS_direction=0;//reset MP.PAS_direction for second part of calibration
     uint32_tics_filtered=1000000;
 
     if(Z_position<0)Z_position+=820;
@@ -1892,15 +1893,19 @@ uint16_t update_setpoint(void){
 						if ((MP.reverse*temp6>>4)>-40)Z_position++;
 						else if ((MP.reverse*temp6>>4)<-50)Z_position--;
 						else {
+
+							MS.hall_angle_detect_flag=1;
 							MS.i_q_setpoint_temp=0;
 							timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_0,_T>>1);
 							timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_1,_T>>1);
 							timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_2,_T>>1);
 							timer_primary_output_config(TIMER0,DISABLE); //Disable PWM if motor is not turning
 							MP.Kv_constant=temp5>>4;
-
+							delay_1ms(1000); //wait for pedals reaching standstill
+							if(MP.PAS_direction>0)MP.PAS_direction=1;
+							else MP.PAS_direction=0;
 							write_virtual_eeprom();
-							MS.hall_angle_detect_flag=1;
+
 						}
 					}
 
