@@ -1239,10 +1239,10 @@ void reg_ADC_processing(void)
 	MS.Voltage=voltage_raw_filtered*CAL_BAT_V;//Battery voltage in mV
 	MS.calories=Forward_counter;//(uint16_t)watt_seconds_used/3600; //Ws to Wh
 
-	temp1=MP.Kv_constant;
+	temp1=PI_iq.setpoint;
 	temp2=ui16_erps;
-	temp3=MP.PAS_direction;
-	temp4=MS.i_q_setpoint;
+	temp3=MS.i_q;
+	temp4=MS.i_d;
 
 	MS.torque_on_crank=(((adc_value[2])*3300)>>12)+torque_offset_correction; //map ADC value to mV
 	if(MS.torque_on_crank>tq_threshold&&PAS_counter<MP.PAS_timeout)torque_counter=0;//reset counter, if pressure on pedal and pedals rotating
