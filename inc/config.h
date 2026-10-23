@@ -26,7 +26,7 @@
 #define CAL_V 15LL<<8
 #define CAL_I 70 //Zurückgerechnet aus Batteriestrom = Tastverhältnis * Motorstrom
 #define BOOTLOADER 38
-#define VERSION "EBiCS_for_M510+M560_V0.0096"
+#define VERSION "EBiCS_for_M510+M560_V0.0097"
 // BionX IGH3
 //#define INDUCTANCE 12LL
 //#define RESISTANCE 220LL
@@ -62,10 +62,10 @@
 
 //----------------------------------------------------------------------
 //PI-control factor settings
-#define P_FACTOR_I_Q 500
-#define I_FACTOR_I_Q 1
-#define P_FACTOR_I_D 500
-#define I_FACTOR_I_D 1
+#define P_FACTOR_I_Q 1.5
+#define I_FACTOR_I_Q 0.01
+#define P_FACTOR_I_D 1.5
+#define I_FACTOR_I_D 0.01
 #define P_FACTOR_SPEED 1
 #define I_FACTOR_SPEED 10
 

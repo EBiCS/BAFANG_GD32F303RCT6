@@ -155,27 +155,28 @@ void FOC_calculation(int16_t int16_i_as, int16_t int16_i_bs, q31_t q31_teta, int
 //PI Control for quadrature current iq (torque)
 q31_t PI_control (PI_control_t* PI_c)
 {
-
-  q31_t q31_p; //proportional part
-  q31_p = ((PI_c->setpoint - PI_c->recent_value)*PI_c->gain_p);
-  PI_c->integral_part += ((PI_c->setpoint - PI_c->recent_value)*PI_c->gain_i);
-
-
-  if (PI_c->integral_part > PI_c->limit_i << PI_c->shift) PI_c->integral_part = PI_c->limit_i << PI_c->shift;
-  if (PI_c->integral_part < -(PI_c->limit_i << PI_c->shift)) PI_c->integral_part = -(PI_c->limit_i << PI_c->shift);
-//  if(!(TIMER_CCHP(TIMER0)&(uint32_t)TIMER_CCHP_POEN))PI_c->integral_part = 0 ; //reset integral part if PWM is disabled
-
-    //avoid too big steps in one loop run
-  if (q31_p+PI_c->integral_part > PI_c->out+PI_c->max_step) PI_c->out+=PI_c->max_step;
-  else if  (q31_p+PI_c->integral_part < PI_c->out-PI_c->max_step)PI_c->out-=PI_c->max_step;
-  else PI_c->out=(q31_p+PI_c->integral_part);
+	float Delta = (PI_c->setpoint - PI_c->recent_value);
+	    float p_part; //proportional part
+	    p_part= Delta*PI_c->gain_p;
+	    temp5=p_part;
+	    PI_c->integral_part += Delta*PI_c->gain_i;
 
 
-  if (PI_c->out>PI_c->limit_output << PI_c->shift) PI_c->out = PI_c->limit_output<< PI_c->shift;
-  if (PI_c->out<-(PI_c->limit_output << PI_c->shift)) PI_c->out = -(PI_c->limit_output<< PI_c->shift); // allow no negative voltage.
- // if(!(TIMER_CCHP(TIMER0)&(uint32_t)TIMER_CCHP_POEN))PI_c->integral_part = 0  ; //reset output if PWM is disabled
+	  if (PI_c->integral_part > PI_c->limit_i) PI_c->integral_part = PI_c->limit_i;
+	  if (PI_c->integral_part < -(PI_c->limit_i)) PI_c->integral_part = -(PI_c->limit_i);
+	//  if(!(TIMER_CCHP(TIMER0)&(uint32_t)TIMER_CCHP_POEN))PI_c->integral_part = 0 ; //reset integral part if PWM is disabled
 
-  return (PI_c->out>>PI_c->shift);
+	    //avoid too big steps in one loop run
+	  if (p_part+PI_c->integral_part > PI_c->out+PI_c->max_step) PI_c->out+=PI_c->max_step;
+	  else if  (p_part+PI_c->integral_part < PI_c->out-PI_c->max_step)PI_c->out-=PI_c->max_step;
+	  else PI_c->out=(p_part+PI_c->integral_part);
+
+
+	  if (PI_c->out>PI_c->limit_output) PI_c->out = PI_c->limit_output;
+	  if (PI_c->out<-(PI_c->limit_output)) PI_c->out = -(PI_c->limit_output); // allow no negative voltage.
+	 // if(!(TIMER_CCHP(TIMER0)&(uint32_t)TIMER_CCHP_POEN))PI_c->integral_part = 0  ; //reset output if PWM is disabled
+
+	  return (PI_c->out);
 }
 
 

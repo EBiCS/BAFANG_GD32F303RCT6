@@ -135,6 +135,8 @@ void InitEEPROM(MotorParams_t* MP){
 	MP->system_voltage = SYSTEM_VOLTAGE;
 	MP->max_voltage = MAX_VOLTAGE;
 	MP->decay_base =20;
+	MP->walk_assist_current = 10;
+	MP->walk_assist_speed = 600;
 	for (k=0; k < 6; k++){
 		for (l=0; l < 7; l++){
 			MP->assist_profile[k][l]=(k+1)*20;
