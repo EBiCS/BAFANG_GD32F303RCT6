@@ -1242,7 +1242,7 @@ void reg_ADC_processing(void)
 	temp1=PI_iq.setpoint;
 	temp2=ui16_erps;
 	temp3=MS.i_q;
-	temp4=MS.cadence;
+	temp4=MS.u_q;
 
 	MS.torque_on_crank=(((adc_value[2])*3300)>>12)+torque_offset_correction; //map ADC value to mV
 	if(MS.torque_on_crank>tq_threshold&&PAS_counter<MP.PAS_timeout)torque_counter=0;//reset counter, if pressure on pedal and pedals rotating
@@ -1306,12 +1306,11 @@ void runPIcontrol(void){
 	if(MS.Battery_Current>MP.battery_current_max) BC_limit_flag=1;
 	//check, if theoretical Battery current would be below limit with some hysteresis
 	if((MS.i_q_setpoint*CAL_I*MS.u_abs)>>11<(MP.battery_current_max*0.9)) BC_limit_flag=0; //duty cycle is scaled to 2048 = 2^11
-	if(PAS_counter<2000&&Forward_counter>5)MS.PAS_active_flag=1; //set timeout to 0,5s hardcoded
-	else MS.PAS_active_flag=0;
+
 	if(!BC_limit_flag){
 	//control iq
 	  PI_iq.recent_value = MS.i_q;
-	  PI_iq.setpoint = MP.reverse*i8_reverse_flag*(MS.i_q_setpoint+MS.PAS_active_flag*35);
+	  PI_iq.setpoint = MP.reverse*i8_reverse_flag*(MS.i_q_setpoint);
 
 	}
 	else{
@@ -1910,6 +1909,10 @@ uint16_t update_setpoint(void){
 					}
 
 				}
+
+				if(PAS_counter<2000&&Forward_counter>5)MS.PAS_active_flag=1; //set timeout to 0,5s hardcoded
+				else MS.PAS_active_flag=0;
+				MS.i_q_setpoint_temp+=MS.PAS_active_flag*35;
 
 				//reset integral part to avoid undefined overrun
 				if(!MS.i_q_setpoint_temp&&PI_iq.integral_part){
