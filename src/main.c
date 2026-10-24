@@ -1912,7 +1912,7 @@ uint16_t update_setpoint(void){
 
 				if(PAS_counter<2000&&Forward_counter>5)MS.PAS_active_flag=1; //set timeout to 0,5s hardcoded
 				else MS.PAS_active_flag=0;
-				MS.i_q_setpoint_temp+=MS.PAS_active_flag*35;
+				MS.i_q_setpoint_temp+=MS.PAS_active_flag*10;
 
 				//reset integral part to avoid undefined overrun
 				if(!MS.i_q_setpoint_temp&&PI_iq.integral_part){
