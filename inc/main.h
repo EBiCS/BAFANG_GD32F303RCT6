@@ -156,6 +156,7 @@ typedef struct
 	uint8_t        	walk_assist_current; // 0-100 %, maps to Para1[36] (speed_limit_enabled in JS)
 	int16_t       	PAS_direction;
 	uint16_t 		Kv_constant;
+	uint8_t			freerun_strenght; //Limp Mode SoC Limit field
 
 }MotorParams_t;
 

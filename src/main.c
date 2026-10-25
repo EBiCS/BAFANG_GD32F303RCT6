@@ -1237,7 +1237,7 @@ void reg_ADC_processing(void)
 	voltage_raw_filtered=voltage_raw_cumulated>>6;
 
 	MS.Voltage=voltage_raw_filtered*CAL_BAT_V;//Battery voltage in mV
-	MS.calories=Forward_counter;//(uint16_t)watt_seconds_used/3600; //Ws to Wh
+	MS.calories=(uint16_t)watt_seconds_used/3600; //Ws to Wh
 
 	temp1=PI_iq.setpoint;
 	temp2=ui16_erps;
@@ -1912,7 +1912,7 @@ uint16_t update_setpoint(void){
 
 				if(PAS_counter<2000&&Forward_counter>5)MS.PAS_active_flag=1; //set timeout to 0,5s hardcoded
 				else MS.PAS_active_flag=0;
-				MS.i_q_setpoint_temp+=MS.PAS_active_flag*10;
+				MS.i_q_setpoint_temp+=MS.PAS_active_flag*MP.freerun_strenght;
 
 				//reset integral part to avoid undefined overrun
 				if(!MS.i_q_setpoint_temp&&PI_iq.integral_part){

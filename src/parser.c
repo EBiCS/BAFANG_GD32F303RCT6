@@ -14,6 +14,7 @@ void parse_DPparams(MotorParams_t* MP){
 	MP->system_voltage = Para1[0];
 	MP->battery_current_max=Para1[1]*1000;
 	MP->max_voltage = Para1[2];
+	MP->freerun_strenght=Para1[10]; //Limp Mode SoC Limit field
 	MP->phase_current_max=Para1[9]*1000/CAL_I; //uses field Max Current on Low Charge
 	MP->gear_ratio=Para1[19];
 	MP->MagicNumber=Para1[24]+(Para1[25]<<8);
@@ -69,6 +70,7 @@ void parse_MOparams(MotorParams_t* MP){
 	Para1[3] = (MP->voltage_min*CAL_BAT_V)&0xFF;
 	Para1[4] = ((MP->voltage_min*CAL_BAT_V)>>8)&0xFF;
 	Para1[9]= (MP->phase_current_max*CAL_I/1000);
+	Para1[10]= MP->freerun_strenght;
 	Para1[12]= MP->Cadence_exponent;
 	Para1[14]= MP->legalflag;
 	if (MP->reverse==-1)Para1[18]=0;
@@ -137,6 +139,7 @@ void InitEEPROM(MotorParams_t* MP){
 	MP->decay_base =20;
 	MP->walk_assist_current = 10;
 	MP->walk_assist_speed = 600;
+	MP->freerun_strenght=0;
 	for (k=0; k < 6; k++){
 		for (l=0; l < 7; l++){
 			MP->assist_profile[k][l]=(k+1)*20;
