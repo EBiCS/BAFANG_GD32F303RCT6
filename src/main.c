@@ -493,8 +493,9 @@ int main(void)
 					timer_primary_output_config(TIMER0,DISABLE); //Disable PWM if motor is not turning
 					ui_8_PWM_ON_Flag=0;
 					i8_recent_rotor_direction=0;
-
-            	}
+					PI_iq.integral_part=0;
+					PI_id.integral_part=0;
+				}
             	if(ui16_erps)ui16_erps=0;
             }//end half rotation counter
 
@@ -1262,10 +1263,6 @@ void reg_ADC_processing(void)
 		MS.p_human=0;
 		uint16_cadence_filtered=0;
 		torque_cumulated=0;
-		if (!MS.i_q_setpoint){//reset integral part, if no power from throttle signal is wanted
-			PI_iq.integral_part=0;
-			PI_id.integral_part=0;
-		}
     }
 
 	reg_ADC_flag=0;
@@ -1914,11 +1911,6 @@ uint16_t update_setpoint(void){
 				else MS.PAS_active_flag=0;
 				MS.i_q_setpoint_temp+=MS.PAS_active_flag*MP.freerun_strenght;
 
-				//reset integral part to avoid undefined overrun
-				if(!MS.i_q_setpoint_temp&&PI_iq.integral_part){
-					PI_iq.integral_part=0;
-					PI_id.integral_part=0;
-				}
 
 	    		return MS.i_q_setpoint_temp;
 
