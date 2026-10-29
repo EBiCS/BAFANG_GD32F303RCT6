@@ -62,6 +62,8 @@ FlagStatus reg_ADC_flag=0;
 FlagStatus OnOffButton_flag=0;
 FlagStatus BC_limit_flag=0;
 FlagStatus recalibration_flag=0;
+FlagStatus DrivetrainTensioning_flag=0;
+FlagStatus Backwards_flag=0;
 uint8_t Backwards_counter=0;
 uint8_t Forward_counter=0;
 uint8_t corrections=0;
@@ -1128,6 +1130,10 @@ void TIMER3_IRQHandler(void) //Z-signal processing
         uint16_full_rotation_counter=0;
         uint16_half_rotation_counter=0;
         i32_full_rotation_flag=1;
+        if(DrivetrainTensioning_flag){
+			if (ui16_erps>100&&comp_offset>-MP.freerun_strenght*20)comp_offset--;
+			if (ui16_erps<80&&comp_offset<MP.freerun_strenght*20)comp_offset++;
+        }
     }
 
 }
@@ -1214,7 +1220,8 @@ void PAS_processing(void)
 		//Power=2*Pi*speed*torque, calibration factors: rpm to 1/s for cadence: /60, mV to Nm: 750 to 3200 --> 0 to 80 Nm. (from Bafang data sheet)
 		MS.torque_filtered=(torque_cumulated>>MS.TQfilter);
 		MS.p_human=(uint16_t)((float)(MS.cadence*MS.torque_filtered)*0.00342); //in Watt
-
+		if(Backwards_counter>4)Backwards_flag=1;
+		else Backwards_flag=0;
 		PAS_counter=0;
 	}
 }
@@ -1261,7 +1268,6 @@ void reg_ADC_processing(void)
     if(Overrun_counter<64000)Overrun_counter++;
     MS.i_q_setpoint = update_setpoint();
     if (torque_counter>4000&&!Overrun_flag){ //reset after one second without torque on the pedal
-		Backwards_counter=0;
 		MS.cadence=0;
 		MS.p_human=0;
 		uint16_cadence_filtered=0;
@@ -1843,7 +1849,9 @@ uint16_t update_setpoint(void){
 							MS.i_q_setpoint_temp=mapped_torque;
 						}
 					}
-					else MS.i_q_setpoint_temp=0; //cut motor power on pedaling backwards
+					else {
+						MS.i_q_setpoint_temp=0; //cut motor power on pedaling backwards
+					}
 						//throttle override
 					if(mapped_throttle>MS.i_q_setpoint_temp)MS.i_q_setpoint_temp=mapped_throttle;
 
@@ -1887,19 +1895,22 @@ uint16_t update_setpoint(void){
 	            else{
 	            	//drag compensation as "Drivetrain Tensioning" on any pedal movement with 4 seconds timeout.
 	            	if(MP.freerun_strenght&&!MS.i_q_setpoint_temp){
-						if(PAS_counter<16000){
+						if(PAS_counter<16000&&!Backwards_flag){
 							MS.PAS_active_flag=1; //set timeout to 4s hardcoded
-							if (ui16_erps>300&&comp_offset>-MP.freerun_strenght*100)comp_offset--;
-							if (ui16_erps<200&&comp_offset<MP.freerun_strenght*100)comp_offset++;
+							DrivetrainTensioning_flag=1;
 						}
 						else {
+
 							MS.PAS_active_flag=0;
+							DrivetrainTensioning_flag=0;
 							comp_offset=0;
 						}
 	            	}
 	            }
+	            //reset backward counter after PAS timeout, if Drivetrain tensionin is not active.
+	            if(PAS_counter>MP.PAS_timeout&&!DrivetrainTensioning_flag)Backwards_counter=0;
 	            //apply drag compensation
-	            MS.i_q_setpoint_temp+=MS.PAS_active_flag*(MP.freerun_strenght+comp_offset/100);
+	            MS.i_q_setpoint_temp+=MS.PAS_active_flag*(MP.freerun_strenght+comp_offset/20);
 
 	            // part 2 of positions calibration
 				if(MS.hall_angle_detect_flag>1){
