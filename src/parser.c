@@ -82,6 +82,8 @@ void parse_MOparams(MotorParams_t* MP){
 	Para1[25]= ((MP->MagicNumber)>>8)&0xFF;
 	Para1[34]= ((MP->throttle_offset*50)>>12)+1; //map 5.0V to 12 bit ADC resolution
 	Para1[35]= ((MP->throttle_max*50)>>12)+1; //map 5.0V to 12 bit ADC resolution
+//	Para1[34] = ((uint32_t)MP->throttle_offset * 50u + 2048u) >> 12; //suggestion of Claude for correct rounding
+//	Para1[35] = ((uint32_t)MP->throttle_max    * 50u + 2048u) >> 12;
 	Para1[15] = MP->throttle_exponent;//field cadence sensor signals per rotation
 	Para1[37]= MP->Override_Duration/40;// used for override duration
 	Para1[38]= MP->PAS_timeout*10/4000; //in Zehntelsekunden, use field Current Loading Time (Ramp Up)
