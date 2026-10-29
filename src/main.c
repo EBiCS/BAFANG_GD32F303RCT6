@@ -159,8 +159,10 @@ int32_t Hall_26 = -966367405;
 int32_t Encoder_raw_angle = 0;
 int32_t PWM_offset_cumulated = 0;
 int32_t PWM_offset = 0;
+int16_t comp_offset = 0;
 float 	helper_cadence=0;
 float 	helper_throttle=0;
+float 	helper_distance=0;
 int32_t q31_PLL_error=0;
 int32_t q31_rotorposition_PLL=0;
 uint8_t ui_8_PLL_counter=0;
@@ -371,6 +373,7 @@ int main(void)
 
 	helper_cadence=((float)1.0/((float)1.0+(float)MP.Cadence_exponent));
 	helper_throttle= (float)MP.throttle_exponent/100.0;
+	helper_distance=(float)MP.wheel_cirumference/(float)(MP.pulses_per_revolution*1000);
     //autodetect();
 
     while (1){
@@ -1224,7 +1227,7 @@ void Speed_processing(void)
 		MS.Speedx100=Speedx100_cumulated/MP.pulses_per_revolution;
 		Speed_counter=0;
 		Speed_flag=0;
-		MS.distance_since_startup+=MP.wheel_cirumference/(MP.pulses_per_revolution*1000); //in m
+		MS.distance_since_startup+=helper_distance; //in m
 	}
 }
 
@@ -1868,13 +1871,38 @@ uint16_t update_setpoint(void){
 
 					if((uint16_cadence_filtered>>3)>15){
 						MS.i_q_setpoint_temp=map(MS.Speedx100, speedlimitx100_scaled,(speedlimitx100_scaled+200),MS.i_q_setpoint_temp,0);
+
 					}
 					else{ //limit to 6km/h if pedals are not turning
 						MS.i_q_setpoint_temp=map(MS.Speedx100, 500,700,MS.i_q_setpoint_temp,0);
 					}
 
+					if(!MS.i_q_setpoint_temp) //drag compensation only when pedaling forward an with short PAS timeout
+					{
+						if(PAS_counter<2000&&Forward_counter>3)MS.PAS_active_flag=1; //set timeout to 0,5s hardcoded
+						else MS.PAS_active_flag=0;
+						comp_offset=0;
+					}
 				}//end legalflag
-				if(MS.hall_angle_detect_flag>1){ // part 2 of positions calibration
+	            else{
+	            	//drag compensation as "Drivetrain Tensioning" on any pedal movement with 4 seconds timeout.
+	            	if(MP.freerun_strenght&&!MS.i_q_setpoint_temp){
+						if(PAS_counter<16000){
+							MS.PAS_active_flag=1; //set timeout to 4s hardcoded
+							if (ui16_erps>300&&comp_offset>-MP.freerun_strenght*100)comp_offset--;
+							if (ui16_erps<200&&comp_offset<MP.freerun_strenght*100)comp_offset++;
+						}
+						else {
+							MS.PAS_active_flag=0;
+							comp_offset=0;
+						}
+	            	}
+	            }
+	            //apply drag compensation
+	            MS.i_q_setpoint_temp+=MS.PAS_active_flag*(MP.freerun_strenght+comp_offset/100);
+
+	            // part 2 of positions calibration
+				if(MS.hall_angle_detect_flag>1){
 					MS.i_q_setpoint_temp=200;
 					temp6-=temp6>>4;
 					temp6+=MS.u_d;
@@ -1907,9 +1935,7 @@ uint16_t update_setpoint(void){
 
 				}
 
-				if(PAS_counter<2000&&Forward_counter>5)MS.PAS_active_flag=1; //set timeout to 0,5s hardcoded
-				else MS.PAS_active_flag=0;
-				MS.i_q_setpoint_temp+=MS.PAS_active_flag*MP.freerun_strenght;
+
 
 
 	    		return MS.i_q_setpoint_temp;
