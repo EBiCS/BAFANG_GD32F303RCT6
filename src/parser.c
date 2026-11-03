@@ -33,8 +33,10 @@ void parse_DPparams(MotorParams_t* MP){
 	MP->ramp_end = 11250/Para1[39]; //use field Current Shedding Time (Ramp Down), calculate timer tics from theshold cadence
 	MP->walk_assist_speed = Para1[60]+(Para1[61]<<8);
 	if (MP->walk_assist_speed == 0) MP->walk_assist_speed = 600; // fallback: 6.0 km/h
+	MP->TS_recalibration=Para1[59];
 	MP->walk_assist_current = Para1[36];
 	if (MP->walk_assist_current == 0 || MP->walk_assist_current > 100) MP->walk_assist_current = 30; // fallback: 30%
+
 	memcpy(&MP->assist_profile[0][0],&Para2[0],30);
 	memcpy(&MP->ext_boost_duration[0]+1,&Para2[0]+31,5);
 	memcpy(&MP->ext_boost_strength[0]+1,&Para2[0]+37,5);
@@ -89,6 +91,7 @@ void parse_MOparams(MotorParams_t* MP){
 	Para1[38]= MP->PAS_timeout*10/4000; //in Zehntelsekunden, use field Current Loading Time (Ramp Up)
 	Para1[39]= 11250/MP->ramp_end; //use field Current Shedding Time (Ramp Down), calculate threshold cadence from timer tics
 	Para1[36]= MP->walk_assist_current;
+	Para1[59]= MP->TS_recalibration;
 	Para1[60]= MP->walk_assist_speed&0xFF;
 	Para1[61]= (MP->walk_assist_speed>>8)&0xFF;
 
@@ -142,6 +145,7 @@ void InitEEPROM(MotorParams_t* MP){
 	MP->walk_assist_current = 10;
 	MP->walk_assist_speed = 600;
 	MP->freerun_strenght=0;
+	MP->TS_recalibration=0;
 	for (k=0; k < 6; k++){
 		for (l=0; l < 7; l++){
 			MP->assist_profile[k][l]=(k+1)*20;

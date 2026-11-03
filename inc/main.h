@@ -157,6 +157,7 @@ typedef struct
 	int16_t       	PAS_direction;
 	uint16_t 		Kv_constant;
 	uint8_t			freerun_strenght; //Limp Mode SoC Limit field
+	uint8_t			TS_recalibration; //Lamps always on field
 
 }MotorParams_t;
 

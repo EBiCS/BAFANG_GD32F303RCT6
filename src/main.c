@@ -444,8 +444,15 @@ int main(void)
             if (slow_loop_counter > 200){ //slow loop every 50ms, 20Hz, Timer1 @4kHz interrupt frequency
             	gd_eval_led_toggle(LED2);
             	//if(PAS_counter>16000&&!ui_8_PWM_ON_Flag&&iabs(MS.torque_on_crank-740)>40)get_torque_correction();
-            	if(MS.Speedx100>500 && iabs(MS.torque_on_crank-750)>100 && PAS_counter>2000 && recalibration_flag)  get_torque_correction();
-            	if(MS.cadence>40) recalibration_flag=1;
+
+            	if(MP.TS_recalibration){
+					if(MS.Speedx100>500 && iabs(MS.torque_on_crank-750)>100 && PAS_counter>2000 && recalibration_flag)  get_torque_correction();
+					if(MS.cadence>40) recalibration_flag=1;
+            	}
+            	else if(!MS.assist_level&&Backwards_counter==10&&!recalibration_flag){
+            		get_torque_correction();
+            		recalibration_flag=1;
+            	}
 
 #ifdef PRINTDEBUG_UART
 
@@ -1131,8 +1138,8 @@ void TIMER3_IRQHandler(void) //Z-signal processing
         uint16_half_rotation_counter=0;
         i32_full_rotation_flag=1;
         if(DrivetrainTensioning_flag){
-			if (ui16_erps>100&&comp_offset>-MP.freerun_strenght*20)comp_offset--;
-			if (ui16_erps<80&&comp_offset<MP.freerun_strenght*20)comp_offset++;
+			if (ui16_erps>60&&comp_offset>-MP.freerun_strenght)comp_offset--;
+			if (ui16_erps<50&&comp_offset<30)comp_offset++;
         }
     }
 
@@ -1221,7 +1228,10 @@ void PAS_processing(void)
 		MS.torque_filtered=(torque_cumulated>>MS.TQfilter);
 		MS.p_human=(uint16_t)((float)(MS.cadence*MS.torque_filtered)*0.00342); //in Watt
 		if(Backwards_counter>4)Backwards_flag=1;
-		else Backwards_flag=0;
+		else {
+			Backwards_flag=0;
+			if(!MP.TS_recalibration)recalibration_flag=0;
+		}
 		PAS_counter=0;
 	}
 }
@@ -1816,7 +1826,7 @@ void get_torque_correction(void){
     torque_offset_correction=(torque_offset_correction>>4);
     torque_offset_correction=740-((torque_offset_correction*3300)>>12);
     corrections++;
-    recalibration_flag=0;
+    if(MP.TS_recalibration)recalibration_flag=0;
 }
 
 uint16_t update_setpoint(void){
@@ -1907,10 +1917,10 @@ uint16_t update_setpoint(void){
 						}
 	            	}
 	            }
-	            //reset backward counter after PAS timeout, if Drivetrain tensionin is not active.
+	            //reset backward counter after PAS timeout, if Drivetrain tensioning is not active.
 	            if(PAS_counter>MP.PAS_timeout&&!DrivetrainTensioning_flag)Backwards_counter=0;
 	            //apply drag compensation
-	            MS.i_q_setpoint_temp+=MS.PAS_active_flag*(MP.freerun_strenght+comp_offset/20);
+	            MS.i_q_setpoint_temp+=MS.PAS_active_flag*(MP.freerun_strenght+comp_offset);
 
 	            // part 2 of positions calibration
 				if(MS.hall_angle_detect_flag>1){
