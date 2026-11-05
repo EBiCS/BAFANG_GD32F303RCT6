@@ -219,7 +219,9 @@ void processCAN_Rx(MotorParams_t* MP, MotorState_t* MS){
 
 
 	}
-	if(Ext_ID_Rx.command==0x3005){ //jump to bootloader for firmware update
+	//jump to bootloader for firmware update, only when the update tool addresses the controller (0x4000, older tools 0x2000).
+	//0x3005 is a broadcast that is also sent while the display is updated, resetting on it cuts the display power.
+	if(Ext_ID_Rx.target==2 && (Ext_ID_Rx.command==0x4000 || Ext_ID_Rx.command==0x2000)){
 		NVIC_SystemReset();
 	}
 }
