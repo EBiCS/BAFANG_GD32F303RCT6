@@ -188,7 +188,7 @@ int16_t i16_ph3_current=0;
 int8_t i8_reverse_flag = 1;
 const q31_t tics_lower_limit = WHEEL_CIRCUMFERENCE*5*3600/(6*GEAR_RATIO*SPEEDLIMIT*10); //tics=wheelcirc*timerfrequency/(no. of hallevents per rev*gear-ratio*speedlimit)*3600/1000000
 const q31_t tics_higher_limit = WHEEL_CIRCUMFERENCE*5*3600/(6*GEAR_RATIO*(SPEEDLIMIT+2)*10);
-const uint16_t tq_threshold = TQ_THRESHOLD;
+//const uint16_t tq_threshold = TQ_THRESHOLD;
 uint8_t i = 0;
 uint16_t p = 0;
 uint16_t Overrun_strength = 0;
@@ -1221,8 +1221,8 @@ void PAS_processing(void)
 		}
 
 		torque_cumulated-=torque_cumulated>>MS.TQfilter;
-		if(MS.torque_on_crank>tq_threshold){
-			torque_cumulated+=(MS.torque_on_crank-tq_threshold);
+		if(MS.torque_on_crank>MP.TQ_threshold){
+			torque_cumulated+=(MS.torque_on_crank-MP.TQ_threshold);
 		}
 		//Power=2*Pi*speed*torque, calibration factors: rpm to 1/s for cadence: /60, mV to Nm: 750 to 3200 --> 0 to 80 Nm. (from Bafang data sheet)
 		MS.torque_filtered=(torque_cumulated>>MS.TQfilter);
@@ -1266,7 +1266,7 @@ void reg_ADC_processing(void)
 	temp4=MS.u_q;
 
 	MS.torque_on_crank=(((adc_value[2])*3300)>>12)+torque_offset_correction; //map ADC value to mV
-	if(MS.torque_on_crank>tq_threshold&&PAS_counter<MP.PAS_timeout)torque_counter=0;//reset counter, if pressure on pedal and pedals rotating
+	if(MS.torque_on_crank>MP.TQ_threshold&&PAS_counter<MP.PAS_timeout)torque_counter=0;//reset counter, if pressure on pedal and pedals rotating
 	MS.range=MP.PAS_direction*100; //number of torquesensor calibrations at runtime
     slow_loop_counter ++;
     if(torque_counter<64000)torque_counter++;

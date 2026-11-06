@@ -158,6 +158,7 @@ typedef struct
 	uint16_t 		Kv_constant;
 	uint8_t			freerun_strenght; //Limp Mode SoC Limit field
 	uint8_t			TS_recalibration; //Lamps always on field
+	uint16_t       	TQ_threshold;
 
 }MotorParams_t;
 

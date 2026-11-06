@@ -28,6 +28,7 @@ void parse_DPparams(MotorParams_t* MP){
 	else MP->reverse=1;
 	MP->pulses_per_revolution=Para1[20];
 	MP->decay_base=Para1[21];
+	MP->TQ_threshold=Para1[22]+(Para1[23]<<8); //use field Gear Ratio
 	MP->Override_Duration=Para1[37]*40;
 	MP->PAS_timeout= Para1[38]*400; //in Zehntelsekunden, use field Current Loading Time (Ramp Up)
 	MP->ramp_end = 11250/Para1[39]; //use field Current Shedding Time (Ramp Down), calculate timer tics from theshold cadence
@@ -80,6 +81,8 @@ void parse_MOparams(MotorParams_t* MP){
 	Para1[19]= MP->gear_ratio;
 	Para1[20]= MP->pulses_per_revolution;
 	Para1[21]= MP->decay_base;
+	Para1[22]= MP->TQ_threshold&0xFF;
+	Para1[23]= (MP->TQ_threshold>>8)&0xFF;
 	Para1[24]= (MP->MagicNumber)&0xFF;
 	Para1[25]= ((MP->MagicNumber)>>8)&0xFF;
 //	Para1[34]= ((MP->throttle_offset*50)>>12)+1; //map 5.0V to 12 bit ADC resolution
@@ -133,6 +136,7 @@ void InitEEPROM(MotorParams_t* MP){
 	MP->pulses_per_revolution=PULSES_PER_REVOLUTION;
 	MP->phase_current_max = PH_CURRENT_MAX;
 	MP->voltage_min=VOLTAGE_MIN;
+	MP->TQ_threshold=TQ_THRESHOLD;
 	MP->legalflag = LEGALFLAG;
 	MP->Override_Duration=4000;
 	MP->PAS_timeout = PAS_TIMEOUT;
