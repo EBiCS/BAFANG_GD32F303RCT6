@@ -1,9 +1,14 @@
 Master Branch is for the hubmotor controller CRA101C with GD32F303RCT6 processor.
 
-This project is under construction. Basic functions are implemented, a very first release is published. 
+This project is under construction. All you are doing with this project is on your own risk. The authors do not accept any liability for damage to property or personal injury!  
+It is strongly recommented to use a fuse between controller and battery. 
+Basic functions are implemented, a very first release is published. 
 The bin file can be flashed with the [Open Bafang Canable Tool](https://github.com/mdi-9/bafang_canable_pro/releases).  
 
 The canable tool can be used to setup most relevant parameters, but some fields have a different meaning than in the original Bafang firmware and some fields have no function at all yet.  
+
+Attention: the button "Torquesensor Calibration" is used to reset all parameters to their default values!  
+
 For discussion visit the [Endless Sphere forum](https://endless-sphere.com/sphere/threads/foc-open-source-firmware-for-bafang-can-bus-controllers-with-gd32f303-processor.128869/)  
 
 ![ElectricParameters](/documentation/ElectricParameters.JPG)  

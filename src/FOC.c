@@ -63,14 +63,14 @@ void FOC_calculation(int16_t int16_i_as, int16_t int16_i_bs, q31_t q31_teta, int
 	 q31_t q31_i_beta_corr = 0;
 	 static q31_t q31_angle_old = 0;
 	 q31_t sinevalue=0, cosinevalue = 0;
-	 temp6= (((q31_teta >> 23) * 180) >> 9);
-	 if(temp6 !=temp5){
-		 debug[j]=(int8_t)temp6;
-
-		 temp5=debug[j];
-		 if(j<720) j++;
-		 else j=0;
-	 }
+//	 temp6= (((q31_teta >> 23) * 180) >> 9);
+//	 if(temp6 !=temp5){
+//		 debug[j]=(int8_t)temp6;
+//
+//		 temp5=debug[j];
+//		 if(j<720) j++;
+//		 else j=0;
+//	 }
 
 
 	// temp5=(q31_t)int16_i_as;
@@ -103,9 +103,9 @@ void FOC_calculation(int16_t int16_i_as, int16_t int16_i_bs, q31_t q31_teta, int
 
 
 	if(MS_FOC->i_d>(PH_CURRENT_MAX<<2)){
-		timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_0,0);
-		timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_1,0);
-		timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_2,0);
+		timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_0,_T>>1);
+		timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_1,_T>>1);
+		timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_2,_T>>1);
 		timer_primary_output_config(TIMER0,DISABLE)	;	//disable PWM if overcurrent detected
 		while(1){}						//stay here until hard reset
 	}
@@ -132,12 +132,7 @@ void FOC_calculation(int16_t int16_i_as, int16_t int16_i_bs, q31_t q31_teta, int
 				q31_erps_counter++;
 				//MS_FOC->system_state = Sensorless;
 			}
-		else {
-			//MS_FOC->Speed=10000;
-			//MS_FOC->system_state=IdleRun;
-			//if(!int16_i_q_target&&MS_FOC->Obs_flag)CLEAR_BIT(TIM1->BDTR, TIM_BDTR_MOE);
-			if(MP_FOC->com_mode==Hallsensor_Sensorless)MS_FOC->Obs_flag=0;//reset for Hall sensor startup
-		}
+
 
 		if (q31_angle_old>(1<<25)&&MS_FOC->teta_obs<-(1<<25)&&q31_erps_counter>15){   //Find switch from +180� to -179,999� to detect one completed electric revolution.
 
@@ -160,27 +155,28 @@ void FOC_calculation(int16_t int16_i_as, int16_t int16_i_bs, q31_t q31_teta, int
 //PI Control for quadrature current iq (torque)
 q31_t PI_control (PI_control_t* PI_c)
 {
-
-  q31_t q31_p; //proportional part
-  q31_p = ((PI_c->setpoint - PI_c->recent_value)*PI_c->gain_p);
-  PI_c->integral_part += ((PI_c->setpoint - PI_c->recent_value)*PI_c->gain_i);
-
-
-  if (PI_c->integral_part > PI_c->limit_i << PI_c->shift) PI_c->integral_part = PI_c->limit_i << PI_c->shift;
-  if (PI_c->integral_part < -(PI_c->limit_i << PI_c->shift)) PI_c->integral_part = -(PI_c->limit_i << PI_c->shift);
-//  if(!(TIMER_CCHP(TIMER0)&(uint32_t)TIMER_CCHP_POEN))PI_c->integral_part = 0 ; //reset integral part if PWM is disabled
-
-    //avoid too big steps in one loop run
-  if (q31_p+PI_c->integral_part > PI_c->out+PI_c->max_step) PI_c->out+=PI_c->max_step;
-  else if  (q31_p+PI_c->integral_part < PI_c->out-PI_c->max_step)PI_c->out-=PI_c->max_step;
-  else PI_c->out=(q31_p+PI_c->integral_part);
+	float Delta = (PI_c->setpoint - PI_c->recent_value);
+	    float p_part; //proportional part
+	    p_part= Delta*PI_c->gain_p;
+	    temp5=p_part;
+	    PI_c->integral_part += Delta*PI_c->gain_i;
 
 
-  if (PI_c->out>PI_c->limit_output << PI_c->shift) PI_c->out = PI_c->limit_output<< PI_c->shift;
-  if (PI_c->out<-(PI_c->limit_output << PI_c->shift)) PI_c->out = -(PI_c->limit_output<< PI_c->shift); // allow no negative voltage.
- // if(!(TIMER_CCHP(TIMER0)&(uint32_t)TIMER_CCHP_POEN))PI_c->integral_part = 0  ; //reset output if PWM is disabled
+	  if (PI_c->integral_part > PI_c->limit_i) PI_c->integral_part = PI_c->limit_i;
+	  if (PI_c->integral_part < -(PI_c->limit_i)) PI_c->integral_part = -(PI_c->limit_i);
+	//  if(!(TIMER_CCHP(TIMER0)&(uint32_t)TIMER_CCHP_POEN))PI_c->integral_part = 0 ; //reset integral part if PWM is disabled
 
-  return (PI_c->out>>PI_c->shift);
+	    //avoid too big steps in one loop run
+	  if (p_part+PI_c->integral_part > PI_c->out+PI_c->max_step) PI_c->out+=PI_c->max_step;
+	  else if  (p_part+PI_c->integral_part < PI_c->out-PI_c->max_step)PI_c->out-=PI_c->max_step;
+	  else PI_c->out=(p_part+PI_c->integral_part);
+
+
+	  if (PI_c->out>PI_c->limit_output) PI_c->out = PI_c->limit_output;
+	  if (PI_c->out<-(PI_c->limit_output)) PI_c->out = -(PI_c->limit_output); // allow no negative voltage.
+	 // if(!(TIMER_CCHP(TIMER0)&(uint32_t)TIMER_CCHP_POEN))PI_c->integral_part = 0  ; //reset output if PWM is disabled
+
+	  return (PI_c->out);
 }
 
 

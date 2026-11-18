@@ -27,6 +27,8 @@ Ext_ID_t Ext_ID_Rx;
 Ext_ID_t Ext_ID_Tx;
 void processCAN_Rx(MotorParams_t* MP, MotorState_t* MS);
 void sendCAN_Tx(MotorParams_t* MP, MotorState_t* MS);
+void sendCAN_Poll(MotorParams_t* MP, MotorState_t* MS, uint16_t command);
+void sendAcknoledge(void);
 void send_multiframe(uint16_t command, char* data, uint8_t length );
 void append_multiframe(uint16_t command, char* data);
 void update_checksum(void);
@@ -38,9 +40,15 @@ uint8_t Para2[64];
 uint8_t tx_data_length;
 uint8_t rx_data_length;
 uint8_t nbrofframes;
-uint16_t distance =0;
+float last_distance =0;
+float last_kilometer =0;
+float distance =0;
+uint16_t display_distance=0;
 uint16_t delay_counter =0;
 uint16_t k=0;
+uint8_t level_code;
+uint8_t level_code_old;
+uint8_t level_counter;
 
 uint16_t Rx_MF_active=0;
 uint16_t checksum=0;
@@ -65,7 +73,9 @@ void processCAN_Rx(MotorParams_t* MP, MotorState_t* MS){
 					//save received setting
 					write_virtual_eeprom();
 				}
+
 				else sendCAN_Tx(MP,MS);
+				sendAcknoledge();
 				break;
 			case READ_CMD:
 				sendCAN_Tx(MP,MS);
@@ -133,37 +143,49 @@ void processCAN_Rx(MotorParams_t* MP, MotorState_t* MS){
 
 
 		if(Ext_ID_Rx.command==0x6300){
-			switch (receive_message.rx_data[1]){
-				case 0:
-					MS->assist_level=0;
-					break;
-				case 1:
-					MS->assist_level=1;
-					break;
-				case 0x0B:
-					MS->assist_level=2; //Eco
-					break;
-				case 0x0C:
-					MS->assist_level=3;
-					break;
-				case 0x0D:
-					MS->assist_level=4; //Tour
-					break;
-				case 0x02:
-					MS->assist_level=5;
-					break;
-				case 0x15:
-					MS->assist_level=6;//Sport
-					break;
-				case 0x16:
-					MS->assist_level=7;
-					break;
-				case 0x17:
-					MS->assist_level=8; //Sport +
-					break;
-				case 0x03:
-					MS->assist_level=9; //Boost
-					break;
+			level_code=receive_message.rx_data[1];
+			if(level_code==level_code_old&&level_counter<3)level_counter++;
+			if(level_code!=level_code_old){
+				level_counter=0;
+				MS->level_counter_global++;
+			}
+			level_code_old=level_code;
+
+			if(level_counter==3){
+
+				level_counter=4;
+				switch (level_code){
+					case 0:
+						MS->assist_level=0;
+						break;
+					case 1:
+						MS->assist_level=1;
+						break;
+					case 0x0B:
+						MS->assist_level=2; //Eco
+						break;
+					case 0x0C:
+						MS->assist_level=3;
+						break;
+					case 0x0D:
+						MS->assist_level=4; //Tour
+						break;
+					case 0x02:
+						MS->assist_level=5;
+						break;
+					case 0x15:
+						MS->assist_level=6;//Sport
+						break;
+					case 0x16:
+						MS->assist_level=7;
+						break;
+					case 0x17:
+						MS->assist_level=8; //Sport +
+						break;
+					case 0x03:
+						MS->assist_level=9; //Boost
+						break;
+				}
 			}
 			if (receive_message.rx_data[1]==6)MS->pushassist_flag=SET;
 			else MS->pushassist_flag=RESET;
@@ -181,40 +203,74 @@ void processCAN_Rx(MotorParams_t* MP, MotorState_t* MS){
 			MP->wheel_cirumference=receive_message.rx_data[4]+(receive_message.rx_data[5]<<8);
 			//save received setting
 			write_virtual_eeprom();
+
 		}
 
 		if(Ext_ID_Rx.command==0x6200){ //Position sensor calibration
 			autodetect();
 		}
+		if(Ext_ID_Rx.command==0x6101){ //Torque sensor calibration normally, here used for factory settings reset
+			InitEEPROM(MP);
+			read_virtual_eeprom();
+			parse_MOparams(MP);
+
+		}
 
 
 
 	}
-	if(Ext_ID_Rx.command==0x3005){ //jump to bootloader for firmware update
+	//jump to bootloader for firmware update, only when the update tool addresses the controller (0x4000, older tools 0x2000).
+	//0x3005 is a broadcast that is also sent while the display is updated, resetting on it cuts the display power.
+	if(Ext_ID_Rx.target==2 && (Ext_ID_Rx.command==0x4000 || Ext_ID_Rx.command==0x2000)){
 		NVIC_SystemReset();
 	}
 }
+void sendAcknoledge(void){
+	Ext_ID_Tx.command = Ext_ID_Rx.command;
+	Ext_ID_Tx.operation = 2; //acknoledge OK
+	Ext_ID_Tx.target = 0x05; //BESST
+	Ext_ID_Tx.source = 0x02; //controller
+	transmit_message.tx_sfid = 0x00;
+	transmit_message.tx_efid = Ext_ID_Tx.command+(Ext_ID_Tx.operation<<16)+(Ext_ID_Tx.target<<19)+(Ext_ID_Tx.source<<24);
+	transmit_message.tx_ft = CAN_FT_DATA;
+	transmit_message.tx_ff = CAN_FF_EXTENDED;
+	transmit_message.tx_dlen = 0;
 
+	/* transmit message */
+	transmit_mailbox = can_message_transmit(CAN0, &transmit_message);
+	/* waiting for transmit completed */
+	timeout = 0xFFFF;
+	while((CAN_TRANSMIT_OK != can_transmit_states(CAN0, transmit_mailbox)) && (0 != timeout)){
+		timeout--;
+		}
 
-void sendCAN_Tx(MotorParams_t* MP, MotorState_t* MS){
+}
 
-	switch (Ext_ID_Rx.command){
+void sendCAN_Poll(MotorParams_t* MP, MotorState_t* MS, uint16_t command){
 
-		case 0x6300: //speed and power
+	switch (command){
+
+		case 0x3201: //speed and power
 			/* initialize transmit message */
 			transmit_message.tx_sfid = 0x00;
 			transmit_message.tx_efid = 0x02F83201;
 			transmit_message.tx_ft = CAN_FT_DATA;
 			transmit_message.tx_ff = CAN_FF_EXTENDED;
 			transmit_message.tx_dlen = 8;
-			transmit_message.tx_data[0] = (MS->Speedx100)&0xFF;
-			transmit_message.tx_data[1] = ((MS->Speedx100)>>8)&0xFF;
+			if(MS->offroadtics){
+				transmit_message.tx_data[0] = (MS->offroadtics*100)&0xFF;
+				transmit_message.tx_data[1] = ((MS->offroadtics*100)>>8)&0xFF;
+			}
+			else{
+				transmit_message.tx_data[0] = (MS->Speedx100)&0xFF;
+				transmit_message.tx_data[1] = ((MS->Speedx100)>>8)&0xFF;
+			}
 			transmit_message.tx_data[2] = (abs(MS->Battery_Current)/10)&0xFF;
 			transmit_message.tx_data[3] = ((abs(MS->Battery_Current)/10)>>8)&0xFF;
 			transmit_message.tx_data[4] = (MS->Voltage/10)&0xFF;
 			transmit_message.tx_data[5] = ((MS->Voltage/10)>>8)&0xFF;
 			transmit_message.tx_data[6] = MS->u_abs/10+40; //internal temperature
-			transmit_message.tx_data[7] = temp2/10+40; //motor temperature
+			transmit_message.tx_data[7] = MS->int_Temperature+40; //motor temperature
 
 			/* transmit message */
 			transmit_mailbox = can_message_transmit(CAN0, &transmit_message);
@@ -225,25 +281,33 @@ void sendCAN_Tx(MotorParams_t* MP, MotorState_t* MS){
 				}
 			break;
 
-		case 0x6301: //battery and distance
+		case 0x3200: //battery and distance
 			/* initialize transmit message */
 			if(delay_counter<10)delay_counter++;
-			else
-				if(distance<100)distance++;
-				else distance = 0;
+			else{
+				delay_counter=0;
+				distance=(MS->distance_since_startup)-last_kilometer;
+				if(MS->distance_since_startup!=last_distance)display_distance = distance/10;
+				else{
+					display_distance = 0;
+					last_kilometer=MS->distance_since_startup;
+				}
+				if(distance>1000)last_kilometer=MS->distance_since_startup;
+				last_distance=MS->distance_since_startup;
+			}
 			transmit_message.tx_sfid = 0x00;
 			transmit_message.tx_efid = 0x02F83200;
 			transmit_message.tx_ft = CAN_FT_DATA;
 			transmit_message.tx_ff = CAN_FF_EXTENDED;
 			transmit_message.tx_dlen = 8;
-			transmit_message.tx_data[0] = 50;//battery percentage
-			transmit_message.tx_data[1] = distance;
-			transmit_message.tx_data[2] = 0x06;
+			transmit_message.tx_data[0] = MS->SOC;//battery percentage
+			transmit_message.tx_data[1] = (uint8_t)display_distance; // in 10m
+			transmit_message.tx_data[2] = 0x00;
 			transmit_message.tx_data[3] = MS->cadence; //cadence
 			transmit_message.tx_data[4] = MS->torque_on_crank&0xFF; //torque mV LSB
 			transmit_message.tx_data[5] = (MS->torque_on_crank>>8)&0xFF; //torque mv MSB
-			transmit_message.tx_data[6] = 0x0F;//range LSB
-			transmit_message.tx_data[7] = 0x0F;//range MSB
+			transmit_message.tx_data[6] = MS->range&0xFF;//range LSB
+			transmit_message.tx_data[7] = (MS->range>>8)&0xFF;//range MSB
 
 			/* transmit message */
 			transmit_mailbox = can_message_transmit(CAN0, &transmit_message);
@@ -252,16 +316,16 @@ void sendCAN_Tx(MotorParams_t* MP, MotorState_t* MS){
 			while((CAN_TRANSMIT_OK != can_transmit_states(CAN0, transmit_mailbox)) && (0 != timeout)){
 				timeout--;
 				}
+
 			break;
 
-		case 0x6302: //to do
+		case 0x3205: //to do
 			/* initialize transmit message */
 			transmit_message.tx_sfid = 0x00;
 			transmit_message.tx_efid = 0x02F83205;
 			transmit_message.tx_ft = CAN_FT_DATA;
 			transmit_message.tx_ff = CAN_FF_EXTENDED;
 			transmit_message.tx_dlen = 2;
-			//MS->calories=MP->TS_coeff;
 			transmit_message.tx_data[0] = MS->calories&0xFF; //calories
 			transmit_message.tx_data[1] = (MS->calories>>8)&0xFF;
 
@@ -274,6 +338,15 @@ void sendCAN_Tx(MotorParams_t* MP, MotorState_t* MS){
 				timeout--;
 				}
 			break;
+
+
+	}//end case
+}
+
+void sendCAN_Tx(MotorParams_t* MP, MotorState_t* MS){
+
+	switch (Ext_ID_Rx.command){
+
 
 		case 0x6001: //to do
 			/* initialize transmit message */
@@ -413,7 +486,7 @@ void sendCAN_Tx(MotorParams_t* MP, MotorState_t* MS){
 		case 0x6003: //to do
 			/* initialize transmit message */
 			if(Ext_ID_Rx.operation==1){
-			tx_data_length=sprintf(tx_data, "Alle meine Entchen schwimmen besoffen auf dem See");
+			tx_data_length=sprintf(tx_data, VERSION);
 			send_multiframe(Ext_ID_Rx.command, &tx_data[0],tx_data_length );
 			}
 			break;
