@@ -989,7 +989,7 @@ void nvic_config(void)
     //timer2 interrupt for Halls
     nvic_priority_group_set(NVIC_PRIGROUP_PRE1_SUB3);
     nvic_irq_enable(TIMER1_IRQn, 0, 0);
-    //nvic_irq_enable(TIMER2_IRQn, 0, 0);
+    nvic_irq_enable(TIMER2_IRQn, 0, 0);
     nvic_irq_enable(ADC0_1_IRQn, 0, 0);
     nvic_irq_enable(TIMER3_IRQn, 0, 0);
     nvic_irq_enable(TIMER4_IRQn, 0, 0);
@@ -1372,7 +1372,7 @@ void autodetect(void) {
 
 	for (int i = 0; i < 1080; i++) {
 		q31_rotorposition_absolute += 11930465; //drive motor in open loop with steps of 1 deg
-		delay_1ms(25);
+		delay_1ms(5);
 
 
 		if (ui8_hall_state_old != ui8_hall_state) {
@@ -1758,47 +1758,47 @@ void fmc_program_hall_angles(void)
 
     /* program flash */
 
-        fmc_word_program(address, (uint32_t)i32_full_rotation_flag);
-        address += 4;
-        fmc_flag_clear(FMC_FLAG_BANK0_END);
-        fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
-        fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
+           fmc_word_program(address, (uint32_t)i32_hall_order);
+           address += 4;
+           fmc_flag_clear(FMC_FLAG_BANK0_END);
+           fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
+           fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
 
-        fmc_word_program(address, (uint32_t)Z_position_cumulated);
-        address += 4;
-        fmc_flag_clear(FMC_FLAG_BANK0_END);
-        fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
-        fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
+           fmc_word_program(address, (uint32_t)Hall_13);
+           address += 4;
+           fmc_flag_clear(FMC_FLAG_BANK0_END);
+           fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
+           fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
 
-        fmc_word_program(address, (uint32_t)Z_position);
-        address += 4;
-        fmc_flag_clear(FMC_FLAG_BANK0_END);
-        fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
-        fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
+           fmc_word_program(address, (uint32_t)Hall_32);
+           address += 4;
+           fmc_flag_clear(FMC_FLAG_BANK0_END);
+           fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
+           fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
 
-        fmc_word_program(address, (uint32_t)Hall_26);
-        address += 4;
-        fmc_flag_clear(FMC_FLAG_BANK0_END);
-        fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
-        fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
+           fmc_word_program(address, (uint32_t)Hall_26);
+           address += 4;
+           fmc_flag_clear(FMC_FLAG_BANK0_END);
+           fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
+           fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
 
-        fmc_word_program(address, (uint32_t)Encoder_raw_angle);
-        address += 4;
-        fmc_flag_clear(FMC_FLAG_BANK0_END);
-        fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
-        fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
+           fmc_word_program(address, (uint32_t)Hall_64);
+           address += 4;
+           fmc_flag_clear(FMC_FLAG_BANK0_END);
+           fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
+           fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
 
-        fmc_word_program(address, (uint32_t)PWM_offset_cumulated);
-        address += 4;
-        fmc_flag_clear(FMC_FLAG_BANK0_END);
-        fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
-        fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
+           fmc_word_program(address, (uint32_t)Hall_45);
+           address += 4;
+           fmc_flag_clear(FMC_FLAG_BANK0_END);
+           fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
+           fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
 
-        fmc_word_program(address, (uint32_t)PWM_offset);
-        address += 4;
-        fmc_flag_clear(FMC_FLAG_BANK0_END);
-        fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
-        fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
+           fmc_word_program(address, (uint32_t)Hall_51);
+           address += 4;
+           fmc_flag_clear(FMC_FLAG_BANK0_END);
+           fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
+           fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
 
 
     /* lock the main FMC after the program operation */
@@ -1834,22 +1834,23 @@ void write_virtual_eeprom(void)
 
 void read_virtual_eeprom(void)
 	{
+
     //read individual hall angles from virtual EEPROM
     ptrd = (uint32_t *)FMC_WRITE_START_ADDR;
     if(0xFFFFFFFF != (*(ptrd+1))){
-    	i32_full_rotation_flag=(int32_t)(*ptrd);
+    	i32_hall_order=(int32_t)(*ptrd);
     	ptrd++;
-    	Z_position_cumulated = (int32_t)(*ptrd);
+    	Hall_13 = (int32_t)(*ptrd);
     	ptrd++;
-    	Z_position = (int32_t)(*ptrd);
+    	Hall_32 = (int32_t)(*ptrd);
     	ptrd++;
     	Hall_26 = (int32_t)(*ptrd);
     	ptrd++;
-    	Encoder_raw_angle = (int32_t)(*ptrd);
+    	Hall_64 = (int32_t)(*ptrd);
     	ptrd++;
-    	PWM_offset_cumulated = (int32_t)(*ptrd);
+    	Hall_45 = (int32_t)(*ptrd);
     	ptrd++;
-    	PWM_offset = (int32_t)(*ptrd);
+    	Hall_51 = (int32_t)(*ptrd);
     	ptrd++;
     }
 
