@@ -25,8 +25,8 @@
 #define CAL_BAT_I_OFFSET 1360
 #define CAL_V 15LL<<8
 #define CAL_I 70 //Zurückgerechnet aus Batteriestrom = Tastverhältnis * Motorstrom
-#define BOOTLOADER 0
-#define VERSION "EBiCS_for_M510+M560_V0.00914"
+#define BOOTLOADER 38
+#define VERSION "EBiCS_for_CRA101.C_V0.002"
 // BionX IGH3
 //#define INDUCTANCE 12LL
 //#define RESISTANCE 220LL
