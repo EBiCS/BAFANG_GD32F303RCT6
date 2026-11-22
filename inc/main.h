@@ -113,6 +113,7 @@ typedef struct
 	FlagStatus 		button_up_flag;
 	FlagStatus 		button_down_flag;
 	FlagStatus 		brake_active_flag;
+	FlagStatus 		PAS_active_flag;
 
 }MotorState_t;
 
@@ -136,10 +137,8 @@ typedef struct
 	uint16_t		battery_current_max;
 	int16_t       	voltage_min;
 	uint16_t       	speedLimitx100;
-	uint16_t       	walk_assist_speed; // in km/h x100, e.g. 600 = 6.0 km/h
-	uint8_t        	walk_assist_current; // 0-100 %, maps to Para1[36] (speed_limit_enabled in JS)
 	uint16_t       	TQO_threshold[6];
-	uint8_t       	com_mode;
+	uint8_t       	throttle_exponent;
 	int8_t       	system_voltage;
 	int8_t       	max_voltage;
 	int8_t       	reverse; //use field Motor Type (Para1[18]) 1 = 1, 0 = -1
@@ -150,6 +149,16 @@ typedef struct
 	uint8_t 		assist_settings[6][3]; //six  assist levels (including level zero) with 0: current limit, 1 speed limit, 2 ride mode
 	uint8_t 		ext_boost_duration[6];
 	uint8_t 		ext_boost_strength[6];
+	uint16_t 		battery_capacity;
+	uint16_t 		capacity_used;
+	uint16_t 		distance_gone;
+	uint16_t       	walk_assist_speed; // in km/h x100, e.g. 600 = 6.0 km/h
+	uint8_t        	walk_assist_current; // 0-100 %, maps to Para1[36] (speed_limit_enabled in JS)
+	int16_t       	PAS_direction;
+	uint16_t 		Kv_constant;
+	uint8_t			freerun_strenght; //Limp Mode SoC Limit field
+	uint8_t			TS_recalibration; //Lamps always on field
+	uint16_t       	TQ_threshold;
 	q31_t 			angle_correction;
 
 }MotorParams_t;

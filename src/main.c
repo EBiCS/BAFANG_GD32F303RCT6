@@ -62,6 +62,11 @@ FlagStatus reg_ADC_flag=0;
 FlagStatus OnOffButton_flag=0;
 FlagStatus BC_limit_flag=0;
 uint8_t Backwards_counter=0;
+FlagStatus recalibration_flag=0;
+FlagStatus DrivetrainTensioning_flag=0;
+FlagStatus Backwards_flag=0;
+uint8_t Forward_counter=0;
+uint8_t corrections=0;
 
 void nvic_config(void);
 void led_config(void);
@@ -95,6 +100,7 @@ int8_t calculate_SOC(uint16_t voltage, uint8_t cells_in_series);
 void print_debug_on_CAN(void);
 void Speed_processing(void);
 uint16_t map_rezi(int32_t actual_value, int32_t actual_time, int32_t timeout, int32_t decay_base);
+int32_t map_exp (int32_t x, int32_t in_min, int32_t in_max, int32_t out_min, int32_t out_max);
 uint16_t update_setpoint(void);
 int16_t T_NTC(uint16_t ADC);
 float u32_to_deg=0.00000008381903171539;
@@ -152,14 +158,17 @@ int32_t Hall_26 = -966367405;
 int32_t Hall_64 = -322122295;
 int32_t Hall_45 = 381775140;
 int32_t Hall_51 = 1169185830;
-
+int32_t PWM_offset_cumulated = 0;
+int32_t PWM_offset = 0;
 const int32_t one_deg = 11930465; //one degree in 2^32 logic
-
+int16_t comp_offset = 0;
 int8_t statehistory[36];
 uint8_t historycounter=0;
 int32_t i32_full_rotation_flag =-1;
 
-float 	helper=0;
+float 	helper_cadence=0;
+float 	helper_throttle=0;
+float 	helper_distance=0;
 int32_t q31_PLL_error=0;
 int32_t q31_rotorposition_PLL=0;
 uint8_t ui_8_PLL_counter=0;
@@ -373,8 +382,9 @@ int main(void)
     torque_offset_correction=740-((torque_offset_correction*3300)>>12);
   //  while((adc_value[1])>3000);//safety for bricked throttle
 
-	helper=((float)1.0/((float)1.0+(float)MP.Cadence_exponent));
-    //autodetect();
+	helper_cadence=((float)1.0/((float)1.0+(float)MP.Cadence_exponent));
+	helper_throttle= (float)MP.throttle_exponent/100.0;
+	helper_distance=(float)MP.wheel_cirumference/(float)(MP.pulses_per_revolution*1000);
 
     while (1){
     	fwdgt_counter_reload();
@@ -1174,25 +1184,42 @@ void PAS_processing(void)
 		uint16_cadence_filtered-=uint16_cadence_filtered>>3;
 		uint16_cadence_filtered+=MS.cadence;
 
-
 		PAS_flag = 0;
-		if(gpio_input_bit_get(GPIOD,GPIO_PIN_2)){
-			if(Backwards_counter<10)Backwards_counter++;
-
+		//MP.PAS_direction=1;
+		if(MP.PAS_direction){
+			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10)){
+				if(Backwards_counter)Backwards_counter--;
+				if(Forward_counter<10)Forward_counter++;
+			}
+			else{
+				if(Backwards_counter<10)Backwards_counter++;
+				Forward_counter=0;
+			}
 		}
 		else{
-			if(Backwards_counter)Backwards_counter--;
-			PAS_counter=0;
+			if(gpio_input_bit_get(GPIOC,GPIO_PIN_10)){
+				if(Backwards_counter<10)Backwards_counter++;
+				Forward_counter=0;
+			}
+			else{
+				if(Backwards_counter)Backwards_counter--;
+				if(Forward_counter<10)Forward_counter++;
+			}
 		}
+
 		torque_cumulated-=torque_cumulated>>MS.TQfilter;
-		if(MS.torque_on_crank>750){
-			torque_cumulated+=(MS.torque_on_crank-750);
+		if(MS.torque_on_crank>MP.TQ_threshold){
+			torque_cumulated+=(MS.torque_on_crank-MP.TQ_threshold);
 		}
 		//Power=2*Pi*speed*torque, calibration factors: rpm to 1/s for cadence: /60, mV to Nm: 750 to 3200 --> 0 to 80 Nm. (from Bafang data sheet)
 		MS.torque_filtered=(torque_cumulated>>MS.TQfilter);
 		MS.p_human=(uint16_t)((float)(MS.cadence*MS.torque_filtered)*0.00342); //in Watt
-
-		//PAS_counter=0;
+		if(Backwards_counter>4)Backwards_flag=1;
+		else {
+			Backwards_flag=0;
+			if(!MP.TS_recalibration)recalibration_flag=0;
+		}
+		PAS_counter=0;
 	}
 }
 
@@ -1840,6 +1867,21 @@ uint16_t map_rezi(int32_t actual_value, int32_t actual_time, int32_t timeout, in
     else return 0;
 }
 
+int32_t map_exp (int32_t x, int32_t in_min, int32_t in_max, int32_t out_min, int32_t out_max)
+{
+  // if input is smaller/bigger than expected return the min/max out ranges value
+  if (x < in_min)
+    return out_min;
+  else if (x > in_max)
+    return out_max;
+
+  else{
+	  float mapped_exp = (float)(x-in_min)/(float)(in_max-in_min);
+	  mapped_exp= powf(mapped_exp,helper_throttle)*out_max;
+	  return (int32_t)mapped_exp;
+  }
+}
+
 uint16_t update_setpoint(void){
 
 				//calculate iq setpoint
@@ -1851,11 +1893,11 @@ uint16_t update_setpoint(void){
 	            }
 	            //calculate setpoint, if brake is not activated
 	            else{
-					mapped_throttle= map(adc_value[1], MP.throttle_offset, MP.throttle_max, 0, phase_current_max_scaled);
+					mapped_throttle= map_exp(adc_value[1], MP.throttle_offset, MP.throttle_max, 0, phase_current_max_scaled);
 					mapped_torque= map(MS.torque_on_crank, MP.TQO_threshold[level_to_array_element[MS.assist_level]], 3300, 0, phase_current_max_scaled);
 
 					if(Backwards_counter<4){//normal ride mode, motor power only if pedals are not turned backwards
-						MS.i_q_setpoint_temp=(uint32_t)((float) (MP.TS_coeff*powf((float)MS.cadence,helper))*(MS.torque_filtered)*0.0005*interpolate_assistfactor());//factor 0.0005 from various constants
+						MS.i_q_setpoint_temp=(uint32_t)((float) (MP.TS_coeff*powf((float)MS.cadence,helper_cadence))*(MS.torque_filtered)*0.0005*interpolate_assistfactor());//factor 0.0005 from various constants
 						//limit setpoint to the max value according to the current setting.
 						if(MS.i_q_setpoint_temp>phase_current_max_scaled)MS.i_q_setpoint_temp = phase_current_max_scaled;
 						MS.i_q_setpoint_temp=map_rezi(MS.i_q_setpoint_temp, torque_counter, MP.PAS_timeout, MP.decay_base);
@@ -1870,7 +1912,9 @@ uint16_t update_setpoint(void){
 							MS.i_q_setpoint_temp=mapped_torque;
 						}
 					}
-					else MS.i_q_setpoint_temp=0; //cut motor power on pedaling backwards
+					else {
+						MS.i_q_setpoint_temp=0; //cut motor power on pedaling backwards
+					}
 						//throttle override
 					if(mapped_throttle>MS.i_q_setpoint_temp)MS.i_q_setpoint_temp=mapped_throttle;
 
@@ -1888,7 +1932,6 @@ uint16_t update_setpoint(void){
 
 
 	            }// else brake not active
-	        	//if(PAS_counter>MP.PAS_timeout)MS.i_q_setpoint_temp=0;
 
 	            //low battery ramp down with 3V above battery min voltage
 	            MS.i_q_setpoint_temp=map(voltage_raw_filtered, MP.voltage_min,(MP.voltage_min+176),0,MS.i_q_setpoint_temp);
@@ -1899,38 +1942,75 @@ uint16_t update_setpoint(void){
 
 					if((uint16_cadence_filtered>>3)>15){
 						MS.i_q_setpoint_temp=map(MS.Speedx100, speedlimitx100_scaled,(speedlimitx100_scaled+200),MS.i_q_setpoint_temp,0);
+
 					}
 					else{ //limit to 6km/h if pedals are not turning
 						MS.i_q_setpoint_temp=map(MS.Speedx100, 500,700,MS.i_q_setpoint_temp,0);
 					}
 
+					if(!MS.i_q_setpoint_temp) //drag compensation only when pedaling forward an with short PAS timeout
+					{
+						if(PAS_counter<2000&&Forward_counter>3)MS.PAS_active_flag=1; //set timeout to 0,5s hardcoded
+						else MS.PAS_active_flag=0;
+						comp_offset=0;
+					}
 				}//end legalflag
-				if(MS.hall_angle_detect_flag>1){ // part 2 of positions calibration
-					MS.i_q_setpoint_temp=100;
+	            else{
+	            	//drag compensation as "Drivetrain Tensioning" on any pedal movement with 4 seconds timeout.
+	            	if(MP.freerun_strenght&&!MS.i_q_setpoint_temp){
+						if(PAS_counter<16000&&!Backwards_flag){
+							MS.PAS_active_flag=1; //set timeout to 4s hardcoded
+							DrivetrainTensioning_flag=1;
+						}
+						else {
+
+							MS.PAS_active_flag=0;
+							DrivetrainTensioning_flag=0;
+							comp_offset=0;
+						}
+	            	}
+	            }
+	            //reset backward counter after PAS timeout, if Drivetrain tensioning is not active.
+	            if(PAS_counter>MP.PAS_timeout&&!DrivetrainTensioning_flag)Backwards_counter=0;
+	            //apply drag compensation
+	            MS.i_q_setpoint_temp+=MS.PAS_active_flag*(MP.freerun_strenght+comp_offset);
+
+	            // part 2 of positions calibration
+				if(MS.hall_angle_detect_flag>1){
+					MS.i_q_setpoint_temp=200;
 					temp6-=temp6>>4;
 					temp6+=MS.u_d;
+					if(MS.u_q){
+						temp5-=temp5>>4;
+						temp5+=((ui16_erps<<10)*_T)/(iabs(MS.u_q)*MS.Voltage); //speed per voltage
+						temp3=ui16_erps;
+						temp4=iabs(MS.u_q);
+					}
+
 					if (p>70){
 						p=60;
 						if ((MP.reverse*temp6>>4)>100)MP.angle_correction+=one_deg;
 						else if ((MP.reverse*temp6>>4)<-50)MP.angle_correction-=one_deg;
 						else {
+
+							MS.hall_angle_detect_flag=1;
 							MS.i_q_setpoint_temp=0;
-							PI_iq.integral_part=0;
-							PI_id.integral_part=0;
 							timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_0,_T>>1);
 							timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_1,_T>>1);
 							timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_2,_T>>1);
-							timer_primary_output_config(TIMER0,DISABLE); //Disable PWM
+							timer_primary_output_config(TIMER0,DISABLE); //Disable PWM if motor is not turning
+							MP.Kv_constant=temp5>>4;
+							delay_1ms(1000); //wait for pedals reaching standstill
+							if(MP.PAS_direction>0)MP.PAS_direction=1;
+							else MP.PAS_direction=0;
 							write_virtual_eeprom();
-							MS.hall_angle_detect_flag=1;
+
 						}
 					}
 
 				}
-				if(!MS.i_q_setpoint_temp&&PI_iq.integral_part){
-					PI_iq.integral_part=0;
-					PI_id.integral_part=0;
-				}
+
+
 
 
 	    		return MS.i_q_setpoint_temp;

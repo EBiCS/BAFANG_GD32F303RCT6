@@ -146,9 +146,9 @@ void processCAN_Rx(MotorParams_t* MP, MotorState_t* MS){
 			level_code=receive_message.rx_data[1];
 			if(level_code==level_code_old&&level_counter<3)level_counter++;
 			if(level_code!=level_code_old){
-
 				level_counter=0;
-				}
+				MS->level_counter_global++;
+			}
 			level_code_old=level_code;
 
 			if(level_counter==3){
@@ -219,7 +219,9 @@ void processCAN_Rx(MotorParams_t* MP, MotorState_t* MS){
 
 
 	}
-	if(Ext_ID_Rx.command==0x3005){ //jump to bootloader for firmware update
+	//jump to bootloader for firmware update, only when the update tool addresses the controller (0x4000, older tools 0x2000).
+	//0x3005 is a broadcast that is also sent while the display is updated, resetting on it cuts the display power.
+	if(Ext_ID_Rx.target==2 && (Ext_ID_Rx.command==0x4000 || Ext_ID_Rx.command==0x2000)){
 		NVIC_SystemReset();
 	}
 }
@@ -484,7 +486,7 @@ void sendCAN_Tx(MotorParams_t* MP, MotorState_t* MS){
 		case 0x6003: //to do
 			/* initialize transmit message */
 			if(Ext_ID_Rx.operation==1){
-			tx_data_length=sprintf(tx_data, "EBiCS_for_M510_BL3_V0.006");
+			tx_data_length=sprintf(tx_data, VERSION);
 			send_multiframe(Ext_ID_Rx.command, &tx_data[0],tx_data_length );
 			}
 			break;

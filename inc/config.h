@@ -26,6 +26,7 @@
 #define CAL_V 15LL<<8
 #define CAL_I 95 //Zurückgerechnet aus Batteriestrom = Tastverhältnis * Motorstrom
 #define BOOTLOADER 820
+#define VERSION "EBiCS_for_M820_V0.002"
 // BionX IGH3
 //#define INDUCTANCE 12LL
 //#define RESISTANCE 220LL
@@ -109,6 +110,7 @@
 #define TS_MODE
 #define TQONAD1
 #define TQFILTER 4
+#define TQ_THRESHOLD 800
 
 //---------------------------------------------------------------------
 //Display settings
