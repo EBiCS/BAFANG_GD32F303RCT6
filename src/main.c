@@ -45,6 +45,11 @@ uint16_t adc_value[9];
 //#define FMC_OFFSET_PARA1      	FMC_OFFSET_PARA0 + ((uint32_t)64) //starts after Para1
 //#define FMC_OFFSET_PARA2      	FMC_OFFSET_PARA1 + ((uint32_t)64) //starts after Para1
 #define FMC_OFFSET_MP			((uint32_t)28) //starts after hall angles
+
+#define RideData_WRITE_START_ADDR    ((uint32_t)0x0803E800U) //Page 125, Page size 2kB for storing the used watthours
+#define RideData_WRITE_END_ADDR      ((uint32_t)0x0803F000U) //just one page
+
+
 uint32_t *ptrd;
 uint32_t address = 0x00000000U;
 uint32_t data0   = 0x01234567U;
@@ -65,6 +70,7 @@ uint8_t Backwards_counter=0;
 FlagStatus recalibration_flag=0;
 FlagStatus DrivetrainTensioning_flag=0;
 FlagStatus Backwards_flag=0;
+FlagStatus full_charge_flag=0;
 uint8_t Forward_counter=0;
 uint8_t corrections=0;
 
@@ -86,15 +92,17 @@ int32_t map (int32_t x, int32_t in_min, int32_t in_max, int32_t out_min, int32_t
 void get_standstill_position();
 void dyn_adc_state(q31_t angle);
 void fmc_program_hall_angles(void);
-void fmc_erase_pages(void);
+void fmc_erase_pages(uint32_t start_addr,uint8_t lenght);
 void PAS_processing(void);
 void reg_ADC_processing(void);
 void UART4_init(void);
 int16_t internal_tics_to_speedx100 (uint32_t tics);
 int16_t external_tics_to_speedx100 (uint32_t tics);
-fmc_state_enum fmc_multi_word_program(uint32_t offset, uint8_t* data, uint8_t words);
+fmc_state_enum fmc_multi_word_program(uint32_t start_addr, uint32_t offset, uint8_t* data, uint8_t words);
 void write_virtual_eeprom(void);
+void write_ride_data(void);
 void read_virtual_eeprom(void);
+void read_ride_data(void);
 uint8_t interpolate_assistfactor(void);
 int8_t calculate_SOC(uint16_t voltage, uint8_t cells_in_series);
 void print_debug_on_CAN(void);
@@ -113,6 +121,7 @@ int32_t ButtonVoltageCumulated=620<<6;
 #define sign(x) (((x) >= 0)?(1):(-1))
 MotorState_t MS;
 MotorParams_t MP;
+RideData_t RD;
 //structs for PI_control
 PI_control_t PI_iq;
 PI_control_t PI_id;
@@ -204,7 +213,7 @@ int32_t battery_current_cumulated=0;
 uint32_t Speedx100_cumulated=0;
 uint32_t torque_cumulated=0;
 uint8_t array_temp[88];
-
+float watt_seconds_used=0;
 uint8_t level_to_array_element[10]={0,0,1,0,2,0,3,0,4,5}; //map assist Level to array element
 uint16_t Poll_commands[3]={0x3201,0x3200,0x3205};
 uint8_t pollnumber=0;
@@ -367,7 +376,13 @@ int main(void)
     read_virtual_eeprom();
     parse_MOparams(&MP);
 
+
+    read_ride_data();
+    watt_seconds_used=(float)RD.capacity_used*3600.0;
+	MS.distance_since_startup=(float)RD.distance_gone;
+
     for (int i = 0; i < 2000; i++) {//let the ADC stabilize
+
     	while(!reg_ADC_flag);
     	reg_ADC_flag=0;
     }
@@ -468,7 +483,12 @@ int main(void)
 				else shutoffcounter=0;
 				if(shutoffcounter>50){
 					timer_primary_output_config(TIMER0,DISABLE); //stop PWM output
-					GPIO_BC(GPIOB) = GPIO_PIN_4; //DC/DC enable off
+
+					//write ride data to virtual EEPROM
+					RD.capacity_used=watt_seconds_used/3600;
+					RD.distance_gone=MS.distance_since_startup;
+					write_ride_data();
+					GPIO_BC(GPIOB) = GPIO_PIN_4; //reset Pin4 from Bootloader
 				    GPIO_BC(GPIOB) = GPIO_PIN_5; // Display off
 				    //GPIO_BC(GPIOB) = GPIO_PIN_6; // DC/DC off
 				}
@@ -1715,6 +1735,14 @@ int8_t calculate_SOC(uint16_t voltage, uint8_t cells_in_series){ //interpolate f
             return (int8_t)soc;
         }
     }
+    //identify a fully charged battery once at runtime, full_charge_flag is never reset at runtime
+	if(!full_charge_flag&&MS.Voltage>(int32_t)((float)cells_in_series*4.1))
+	{
+		watt_seconds_used=0;
+		MS.distance_since_startup=0;
+		full_charge_flag=1;
+	}
+
     return (int8_t)soc_values[length - 1];
 }
 
@@ -1724,7 +1752,7 @@ int8_t calculate_SOC(uint16_t voltage, uint8_t cells_in_series){ //interpolate f
     \param[out] none
     \retval     none
 */
-void fmc_erase_pages(void)
+void fmc_erase_pages(uint32_t start_addr,uint8_t lenght)
 {
     uint32_t EraseCounter;
 
@@ -1737,8 +1765,8 @@ void fmc_erase_pages(void)
     fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
 
     /* erase the flash pages */
-    for(EraseCounter = 0; EraseCounter < PageNum; EraseCounter++){
-        fmc_page_erase(FMC_WRITE_START_ADDR + (FMC_PAGE_SIZE * EraseCounter));
+    for(EraseCounter = 0; EraseCounter < lenght; EraseCounter++){
+        fmc_page_erase(start_addr + (FMC_PAGE_SIZE * EraseCounter));
         fmc_flag_clear(FMC_FLAG_BANK0_END);
         fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
         fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
@@ -1810,11 +1838,11 @@ void fmc_program_hall_angles(void)
     fmc_lock();
 }
 
-fmc_state_enum fmc_multi_word_program(uint32_t offset, uint8_t* data, uint8_t words)
+fmc_state_enum fmc_multi_word_program(uint32_t start_addr, uint32_t offset, uint8_t* data, uint8_t words)
 {
 	uint32_t temp=0;
 	fmc_state_enum returnvalue;
-	uint32_t target_address = FMC_WRITE_START_ADDR+offset;
+	uint32_t target_address = start_addr+offset;
     fmc_unlock();
             	for (k=0; k < words; k++){
             		memcpy(&temp, data+k*4,4);
@@ -1832,9 +1860,15 @@ fmc_state_enum fmc_multi_word_program(uint32_t offset, uint8_t* data, uint8_t wo
 
 void write_virtual_eeprom(void)
 	{
-		fmc_erase_pages();
+		fmc_erase_pages(FMC_WRITE_START_ADDR,PageNum);
 		fmc_program_hall_angles();
-		fmc_multi_word_program(FMC_OFFSET_MP, (uint8_t*)&MP, (sizeof(MP)+3)/4); //Did not know padding yet :-)
+		fmc_multi_word_program(FMC_WRITE_START_ADDR, FMC_OFFSET_MP, (uint8_t*)&MP, (sizeof(MP)+3)/4); //Did not know padding yet :-)
+	}
+
+void write_ride_data(void)
+	{
+		fmc_erase_pages(RideData_WRITE_START_ADDR,1);
+		fmc_multi_word_program(RideData_WRITE_START_ADDR, 0, (uint8_t*)&RD, (sizeof(RD)+3)/4); //Did not know padding yet :-)
 	}
 
 void read_virtual_eeprom(void)
@@ -1859,6 +1893,11 @@ void read_virtual_eeprom(void)
     }
 
      memcpy(&MP,(uint32_t *)(FMC_WRITE_START_ADDR+FMC_OFFSET_MP),sizeof(MP));
+	}
+
+void read_ride_data(void)
+	{
+     memcpy(&RD,(uint32_t *)(RideData_WRITE_START_ADDR),sizeof(RD));
 	}
 
 uint16_t map_rezi(int32_t actual_value, int32_t actual_time, int32_t timeout, int32_t decay_base){
