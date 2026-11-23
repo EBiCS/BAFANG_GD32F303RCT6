@@ -318,7 +318,7 @@ int main(void)
 	MS.i_q_setpoint = 0;
 	MS.i_d_setpoint = 0;
 	MS.angle_est=SPEED_PLL;
-	MS.pushassist_flag=SET;
+
 	MS.light_flag=SET;
 	MS.button_up_flag=SET;
 	MS.button_down_flag=SET;
@@ -748,7 +748,7 @@ void adc_config(void)
     adc_inserted_channel_config(ADC1, 0, ADC_CHANNEL_3, ADC_SAMPLETIME_55POINT5);
 //    adc_inserted_channel_config(ADC1, 1, ADC_CHANNEL_5, ADC_SAMPLETIME_55POINT5);
 
-    adc_inserted_channel_offset_config(ADC1, ADC_INSERTED_CHANNEL_0, 2045); //hardcoded, to be improved
+    adc_inserted_channel_offset_config(ADC1, ADC_INSERTED_CHANNEL_0, 2033); //hardcoded, to be improved
 //    adc_inserted_channel_offset_config(ADC1, ADC_INSERTED_CHANNEL_1, 2033); //hardcoded, to be improved
 
 
@@ -1919,6 +1919,7 @@ uint16_t update_setpoint(void){
 	            }
 	            //calculate setpoint, if brake is not activated
 	            else{
+	            	MS.i_q_setpoint_temp=0;
 					mapped_throttle= map_exp(adc_value[1], MP.throttle_offset, MP.throttle_max, 0, phase_current_max_scaled);
 					mapped_torque= map(MS.torque_on_crank, MP.TQO_threshold[level_to_array_element[MS.assist_level]], 3300, 0, phase_current_max_scaled);
 
