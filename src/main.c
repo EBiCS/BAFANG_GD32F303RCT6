@@ -59,6 +59,7 @@ FlagStatus receive_flag;
 FlagStatus PAS_flag=0;
 FlagStatus Speed_flag=0;
 FlagStatus reg_ADC_flag=0;
+FlagStatus inj_ADC_flag=0;
 FlagStatus OnOffButton_flag=0;
 FlagStatus BC_limit_flag=0;
 FlagStatus recalibration_flag=0;
@@ -87,7 +88,8 @@ void runPIcontrol(void);
 void autodetect(void);
 int32_t map (int32_t x, int32_t in_min, int32_t in_max, int32_t out_min, int32_t out_max);
 int32_t map_exp (int32_t x, int32_t in_min, int32_t in_max, int32_t out_min, int32_t out_max);
-void get_standstill_position();
+void get_standstill_position(void);
+void get_phase_current_offset(void);
 void dyn_adc_state(q31_t angle);
 void fmc_program_hall_angles(void);
 void fmc_erase_pages(uint32_t start_addr,uint8_t lenght);
@@ -139,7 +141,9 @@ int32_t torque_offset_correction=0;
 int32_t q31_rotorposition_hall=0;
 q31_t q31_rotorposition_absolute=0;
 int8_t i8_recent_rotor_direction=0;
-
+uint16_t ui16_ph_1_offset=0;
+uint16_t ui16_ph_2_offset=0;
+uint16_t ui16_ph_3_offset=0;
 uint16_t ui16_tim2_recent=0;
 uint16_t uint16_full_rotation_counter=0;
 uint16_t uint16_half_rotation_counter=0;
@@ -375,7 +379,7 @@ int main(void)
     }
 
     get_torque_correction();
-
+    get_phase_current_offset();
 
     while((adc_value[1])>3000);//safety for bricked throttle
 
@@ -497,8 +501,10 @@ int main(void)
 
             if(MS.i_q_setpoint){
             	if(!ui_8_PWM_ON_Flag){
+
+            		get_standstill_position();
             		if(MP.Kv_constant){ //avoid division by zero, if Kv is not detected yet.
-            			PI_iq.integral_part=((MP.reverse*(ui16_erps<<10)*_T)/(MP.Kv_constant*MS.Voltage))<<PI_iq.shift; //preload integral part if motor is running
+            			PI_iq.integral_part=((MP.reverse*(ui16_erps<<10)*_T)/(MP.Kv_constant*MS.Voltage)); //preload integral part if motor is running
                 		PI_iq.out=PI_iq.integral_part;
             		}
 
@@ -743,17 +749,18 @@ void adc_config(void)
     adc_regular_channel_config(ADC0, 8, ADC_CHANNEL_3, ADC_SAMPLETIME_239POINT5);// Phase2 current
 
     adc_inserted_channel_config(ADC0, 0, ADC_CHANNEL_5, ADC_SAMPLETIME_55POINT5);
-    adc_inserted_channel_offset_config(ADC0, ADC_INSERTED_CHANNEL_0, 2033); //hardcoded, to be improved
+    adc_inserted_channel_offset_config(ADC0, ADC_INSERTED_CHANNEL_0, ui16_ph_1_offset); //hardcoded, to be improved
 
     adc_inserted_channel_config(ADC1, 0, ADC_CHANNEL_3, ADC_SAMPLETIME_55POINT5);
 //    adc_inserted_channel_config(ADC1, 1, ADC_CHANNEL_5, ADC_SAMPLETIME_55POINT5);
 
-    adc_inserted_channel_offset_config(ADC1, ADC_INSERTED_CHANNEL_0, 2033); //hardcoded, to be improved
+    adc_inserted_channel_offset_config(ADC1, ADC_INSERTED_CHANNEL_0, ui16_ph_2_offset); //hardcoded, to be improved
 //    adc_inserted_channel_offset_config(ADC1, ADC_INSERTED_CHANNEL_1, 2033); //hardcoded, to be improved
 
 
     adc_inserted_channel_config(ADC2, 0, ADC_CHANNEL_2, ADC_SAMPLETIME_55POINT5);
-    adc_inserted_channel_offset_config(ADC2, ADC_INSERTED_CHANNEL_0, 2033); //hardcoded, to be improved
+
+    adc_inserted_channel_offset_config(ADC2, ADC_INSERTED_CHANNEL_0, ui16_ph_3_offset); //hardcoded, to be improved
 
 
     /* ADC trigger config */
@@ -1273,10 +1280,10 @@ void reg_ADC_processing(void)
 	MS.Voltage=voltage_raw_filtered*CAL_BAT_V;//Battery voltage in mV
 	MS.calories=(uint16_t)watt_seconds_used/3600; //Ws to Wh
 
-	temp1=PI_iq.setpoint;
-	temp2=ui16_erps;
-	temp3=MS.i_q;
-	temp4=MS.u_q;
+	temp1=ui16_ph_1_offset;
+	temp2=ui16_ph_2_offset;
+	temp3=ui16_ph_3_offset;
+	temp4=MS.i_q;
 
 	MS.torque_on_crank=(((adc_value[2])*3300)>>12)+torque_offset_correction; //map ADC value to mV
 	if(MS.torque_on_crank>MP.TQ_threshold&&PAS_counter<MP.PAS_timeout)torque_counter=0;//reset counter, if pressure on pedal and pedals rotating
@@ -1499,88 +1506,93 @@ void ADC0_1_IRQHandler(void)
     /* read ADC inserted group data register */
 
     //gpio_bit_write(GPIOB, GPIO_PIN_0,1);
-    __disable_irq();
+
     i16_ph1_current = adc_inserted_data_read(ADC2, ADC_INSERTED_CHANNEL_0);
     i16_ph2_current = adc_inserted_data_read(ADC1, ADC_INSERTED_CHANNEL_0);
     i16_ph3_current = adc_inserted_data_read(ADC0, ADC_INSERTED_CHANNEL_0);
-	switch (MS.char_dyn_adc_state) //read in according to state
-		{
-		case 1: //Phase C at high dutycycles, read from A+B directly
+
+    if (inj_ADC_flag){
+        __disable_irq();
+
+		switch (MS.char_dyn_adc_state) //read in according to state
 			{
-				//first reading is correct, do nothing
+			case 1: //Phase C at high dutycycles, read from A+B directly
+				{
+					//first reading is correct, do nothing
+				}
+				break;
+			case 2: //Phase A at high dutycycles, read from B+C (A = -B -C)
+				{
+
+					//overwrite A with -B-C
+					i16_ph1_current = -i16_ph2_current-i16_ph3_current;
+
+				}
+				break;
+			case 3: //Phase B at high dutycycles, read from A+C (B=-A-C)
+				{
+
+					//overwrite B with -A-C
+					i16_ph2_current = -i16_ph1_current-i16_ph3_current;
+				}
+				break;
+
+			case 0: //timeslot too small for ADC
+				{
+					//do nothing
+				}
+				break;
+
+
+
+
+			} // end case
+
+		//get the recent timer value from the Hall timer
+		ui16_tim2_recent = timer_counter_read(TIMER2);
+		if (ui16_tim2_recent>SIXSTEPTHRESHOLD<<1){
+			ui16_timertics=SIXSTEPTHRESHOLD<<1;
+			uint32_tics_filtered=ui16_timertics<<3;
+		}
+		//check the speed for sixstep threshold
+		if (ui16_timertics < SIXSTEPTHRESHOLD && ui16_tim2_recent < 200)
+			ui8_6step_flag = 0;
+		if (ui16_timertics > (SIXSTEPTHRESHOLD * 6) >> 2)
+			ui8_6step_flag = 1;
+
+		// extrapolate rotorposition from filtered speed reading
+		if(MS.hall_angle_detect_flag){//q31_rotorposition_absolute = q31_rotorposition_hall + (q31_t) ((float)(i8_recent_rotor_direction * (deg_30<<1) * ui16_tim2_recent)/(float)(uint32_tics_filtered>>3));//
+	//Speed PLL not implemented yet.
+			if(!ui8_6step_flag){
+			q31_rotorposition_absolute = q31_rotorposition_hall
+											+ (q31_t) (i8_recent_rotor_direction
+													* ((10923 * ui16_tim2_recent)
+															/ (uint32_tics_filtered>>3)) << 16);//interpolate angle between two hallevents by scaling timer2 tics, 10923<<16 is 715827883 = 60deg
 			}
-			break;
-		case 2: //Phase A at high dutycycles, read from B+C (A = -B -C)
-			{
+			else q31_rotorposition_absolute = q31_rotorposition_hall - MP.reverse * deg_30; //offset of 30 degree to get the middle of the sector
 
-				//overwrite A with -B-C
-				i16_ph1_current = -i16_ph2_current-i16_ph3_current;
+		}
 
-			}
-			break;
-		case 3: //Phase B at high dutycycles, read from A+C (B=-A-C)
-			{
+		//get the Phase with highest duty cycle for dynamic phase current reading
+		dyn_adc_state(q31_rotorposition_absolute);
 
-				//overwrite B with -A-C
-				i16_ph2_current = -i16_ph1_current-i16_ph3_current;
-			}
-			break;
+		//q31_rotorposition_absolute=(int16_t)((180.0/75.0)*(float)(1<<31));
+		if(ui_8_PWM_ON_Flag){
+			FOC_calculation(i16_ph1_current, i16_ph2_current,
+						q31_rotorposition_absolute,
+						(((int16_t) MP.reverse * i8_reverse_flag)
+								* MS.i_q_setpoint), &MS, &MP);
+			if(switchtime[0]>switchtime[1])temp2=switchtime[0];
+			else temp2=switchtime[1];
+			if(temp2<switchtime[2])temp2=switchtime[2];
+			timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_0,switchtime[0]);
+			timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_1,switchtime[1]);
+			timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_2,switchtime[2]);
 
-		case 0: //timeslot too small for ADC
-			{
-				//do nothing
-			}
-			break;
-
-
-
-
-		} // end case
-
-    //get the recent timer value from the Hall timer
-    ui16_tim2_recent = timer_counter_read(TIMER2);
-    if (ui16_tim2_recent>SIXSTEPTHRESHOLD<<1){
-    	ui16_timertics=SIXSTEPTHRESHOLD<<1;
-    	uint32_tics_filtered=ui16_timertics<<3;
+		}
+		__enable_irq();
     }
-    //check the speed for sixstep threshold
-	if (ui16_timertics < SIXSTEPTHRESHOLD && ui16_tim2_recent < 200)
-		ui8_6step_flag = 0;
-	if (ui16_timertics > (SIXSTEPTHRESHOLD * 6) >> 2)
-		ui8_6step_flag = 1;
-
-    // extrapolate rotorposition from filtered speed reading
-    if(MS.hall_angle_detect_flag){//q31_rotorposition_absolute = q31_rotorposition_hall + (q31_t) ((float)(i8_recent_rotor_direction * (deg_30<<1) * ui16_tim2_recent)/(float)(uint32_tics_filtered>>3));//
-//Speed PLL not implemented yet.
-    	if(!ui8_6step_flag){
-    	q31_rotorposition_absolute = q31_rotorposition_hall
-    									+ (q31_t) (i8_recent_rotor_direction
-    											* ((10923 * ui16_tim2_recent)
-    													/ (uint32_tics_filtered>>3)) << 16);//interpolate angle between two hallevents by scaling timer2 tics, 10923<<16 is 715827883 = 60deg
-    	}
-    	else q31_rotorposition_absolute = q31_rotorposition_hall - MP.reverse * deg_30; //offset of 30 degree to get the middle of the sector
-
-    }
-
-	//get the Phase with highest duty cycle for dynamic phase current reading
-	dyn_adc_state(q31_rotorposition_absolute);
-
-    //q31_rotorposition_absolute=(int16_t)((180.0/75.0)*(float)(1<<31));
-    if(ui_8_PWM_ON_Flag){
-		FOC_calculation(i16_ph1_current, i16_ph2_current,
-					q31_rotorposition_absolute,
-					(((int16_t) MP.reverse * i8_reverse_flag)
-							* MS.i_q_setpoint), &MS, &MP);
-		if(switchtime[0]>switchtime[1])temp2=switchtime[0];
-		else temp2=switchtime[1];
-		if(temp2<switchtime[2])temp2=switchtime[2];
-		timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_0,switchtime[0]);
-		timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_1,switchtime[1]);
-		timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_2,switchtime[2]);
-
-    }
-    __enable_irq();
-
+    inj_ADC_flag=1;
 }
 
 int32_t map (int32_t x, int32_t in_min, int32_t in_max, int32_t out_min, int32_t out_max)
@@ -1908,6 +1920,73 @@ void get_torque_correction(void){
     if(MP.TS_recalibration)recalibration_flag=0;
 }
 
+void get_phase_current_offset(void){
+
+	timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_0,_T>>1);
+	timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_1,_T>>1);
+	timer_channel_output_pulse_value_config(TIMER0,TIMER_CH_2,_T>>1);
+	timer_primary_output_config(TIMER0,ENABLE);
+	ui_8_PWM_ON_Flag=1;
+
+	temp1=0;
+	temp2=0;
+	temp3=0;
+
+    for (int i = 0; i < 8000; i++) {//let the ADC stabilize
+    	inj_ADC_flag=0;
+    	while(!inj_ADC_flag);
+    }
+
+    for (int i = 0; i < 64; i++) {
+    	inj_ADC_flag=0;
+    	while(!inj_ADC_flag);
+    	temp1+=i16_ph1_current;
+    	temp2+=i16_ph2_current;
+    	temp3+=i16_ph3_current;
+
+    }
+    timer_primary_output_config(TIMER0,DISABLE);
+    ui_8_PWM_ON_Flag=0;
+    ui16_ph_1_offset=temp1>>6;
+    ui16_ph_2_offset=temp2>>6;
+    ui16_ph_3_offset=temp3>>6;
+
+    adc_inserted_channel_offset_config(ADC0, ADC_INSERTED_CHANNEL_0, ui16_ph_3_offset);
+    adc_inserted_channel_offset_config(ADC1, ADC_INSERTED_CHANNEL_0, ui16_ph_2_offset);
+    adc_inserted_channel_offset_config(ADC2, ADC_INSERTED_CHANNEL_0, ui16_ph_1_offset);
+}
+
+void get_standstill_position(void){
+
+	  delay_1ms(25);
+	  ui8_hall_state = (GPIO_ISTAT(GPIOC)>>6)&0x07;
+		switch (ui8_hall_state) {
+			//6 cases for forward direction
+			case 2:
+				q31_rotorposition_hall = Hall_32;
+				break;
+			case 6:
+				q31_rotorposition_hall = Hall_26;
+				break;
+			case 4:
+				q31_rotorposition_hall = Hall_64;
+				break;
+			case 5:
+				q31_rotorposition_hall = Hall_45;
+				break;
+			case 1:
+				q31_rotorposition_hall = Hall_51;
+
+				break;
+			case 3:
+				q31_rotorposition_hall = Hall_13;
+				break;
+
+			}
+
+			q31_rotorposition_absolute = q31_rotorposition_hall;
+}
+
 uint16_t update_setpoint(void){
 
 				//calculate iq setpoint
@@ -2035,12 +2114,6 @@ uint16_t update_setpoint(void){
 					}
 
 				}
-				if(!MS.i_q_setpoint_temp){
-					PI_id.integral_part=0;
-					PI_iq.integral_part=0;
-				}
-
-
 
 	    		return MS.i_q_setpoint_temp;
 
