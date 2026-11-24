@@ -2035,7 +2035,10 @@ uint16_t update_setpoint(void){
 					}
 
 				}
-
+				if(!MS.i_q_setpoint_temp){
+					PI_id.integral_part=0;
+					PI_iq.integral_part=0;
+				}
 
 
 
