@@ -107,6 +107,7 @@ uint8_t interpolate_assistfactor(void);
 int8_t calculate_SOC(uint16_t voltage, uint8_t cells_in_series);
 void print_debug_on_CAN(void);
 void Speed_processing(void);
+void wm_request_bootloader_update(void);
 uint16_t map_rezi(int32_t actual_value, int32_t actual_time, int32_t timeout, int32_t decay_base);
 uint16_t update_setpoint(void);
 int16_t T_NTC(uint16_t ADC);
@@ -2117,6 +2118,51 @@ uint16_t update_setpoint(void){
 
 	    		return MS.i_q_setpoint_temp;
 
+}
+/* windmeile wm5: Uebergabe an den Bafang-Bootloader fuer ein Firmware-Update wie in der Originalfirmware CRA101.C.
+ * Analyse der Original-App (documentation/CRA101.C1.1CRA.C3615F801308.bin): Beim Start kopiert sie die 2-KB-Seite
+ * 0x08003000 (Infoseite des Bootloaders) in den RAM. Vor dem Sprung in den Bootloader prueft sie, ob die Halbworte bei
+ * +0x1E und +0x20 zusammen 0xBBBB, 0xDDDD oder 0xCCCC ergeben, setzt +0x04 und +0x1E auf 0x33CCCC33 (+0x08/+0x0A je nach
+ * einer Einstellung auf 0x9955/0x5599 oder 0), loescht die Seite und schreibt die 2 KB zurueck.
+ * Ohne diesen Merker springt der Bootloader nach seiner Bereitmeldung wieder in die Firmware, und das Update-Tool bekommt
+ * auf 0x6008 keine Antwort (Abbruch bei Schritt 2.1, Erfolg nur zufaellig).
+ * Hier: nur +0x04 und +0x1E setzen, alles andere (auch +0x08/+0x0A) unveraendert lassen; nur schreiben, wenn das Format
+ * stimmt; danach Neustart statt Sprung (Peripherie sauber zurueckgesetzt, der Merker steht im Flash). */
+#define WM_BL_INFO_ADDR 0x08003000U
+#define WM_BL_INFO_HALFWORDS 1024U
+#define WM_BL_UPDATE_FLAG 1
+static uint16_t wm_bl_page[WM_BL_INFO_HALFWORDS];
+
+void wm_request_bootloader_update(void)
+{
+	const volatile uint16_t *seite = (const volatile uint16_t *)WM_BL_INFO_ADDR;
+	uint32_t summe = (uint32_t)seite[0x1E/2] + (uint32_t)seite[0x20/2];
+	timer_primary_output_config(TIMER0,DISABLE); // Motoransteuerung aus
+	ui_8_PWM_ON_Flag = 0;
+#if (WM_BL_UPDATE_FLAG)
+	if(summe == 0xBBBB || summe == 0xDDDD || summe == 0xCCCC){
+		for(uint32_t k = 0; k < WM_BL_INFO_HALFWORDS; k++) wm_bl_page[k] = seite[k];
+		wm_bl_page[0x04/2] = 0xCC33; wm_bl_page[0x06/2] = 0x33CC; // Wort 0x33CCCC33 an +0x04
+		wm_bl_page[0x1E/2] = 0xCC33; wm_bl_page[0x20/2] = 0x33CC; // Wort 0x33CCCC33 an +0x1E
+		__disable_irq();
+		fmc_unlock();
+		fmc_flag_clear(FMC_FLAG_BANK0_END);
+		fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
+		fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
+		if(fmc_page_erase(WM_BL_INFO_ADDR) == FMC_READY){
+			for(uint32_t k = 0; k < WM_BL_INFO_HALFWORDS; k++){
+				if(wm_bl_page[k] != 0xFFFF) fmc_halfword_program(WM_BL_INFO_ADDR + 2*k, wm_bl_page[k]);
+				fmc_flag_clear(FMC_FLAG_BANK0_END);
+				fmc_flag_clear(FMC_FLAG_BANK0_WPERR);
+				fmc_flag_clear(FMC_FLAG_BANK0_PGERR);
+			}
+		}
+		fmc_lock();
+	}
+#else
+	(void)summe;
+#endif
+	NVIC_SystemReset();
 }
 
 

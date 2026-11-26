@@ -52,6 +52,7 @@ void runPIcontrol(void);
 void write_virtual_eeprom(void);
 void read_virtual_eeprom(void);
 void autodetect(void);
+void wm_request_bootloader_update(void);
 extern uint16_t slow_loop_counter;
 extern uint16_t switchtime[3];
 extern uint32_t timeout;
